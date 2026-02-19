@@ -1,0 +1,502 @@
+================================================================================
+                    SMARTMETER PROJECT - COMPLETE DESCRIPTION
+                    Government-Grade Smart Meter Installation System
+================================================================================
+
+LAST UPDATED: February 2026
+
+================================================================================
+                              1. PROJECT OVERVIEW
+================================================================================
+
+This is a GOVERNMENT-GRADE SMART METER INSTALLATION MANAGEMENT SYSTEM for MESCOM 
+(Mangalore Electricity Supply Company). It digitizes and controls the complete 
+lifecycle of smart meter installation for new connections.
+
+PROJECT TYPE:
+- NOT a simple CRUD app or demo
+- A lifecycle-governed, multi-role enterprise platform
+- State-machine-based domain with audit-heavy requirements
+- Designed for real-world field operations and billing accuracy
+
+KEY OBJECTIVES:
+- Field realism
+- Inventory accountability  
+- Contractor fairness
+- Audit and billing accuracy
+- Complete traceability of all operations
+
+================================================================================
+                              2. TECHNOLOGY STACK
+================================================================================
+
+FRONTEND (smartmeter-frontend/):
+---------------------------------
+- Framework: Next.js 16 (App Router with Turbopack)
+- Language: TypeScript
+- Styling: Tailwind CSS
+- State/API: Apollo Client (GraphQL)
+- Forms: React Hook Form + Zod validation
+- UI Components: Custom components with Lucide icons
+- Code Generation: GraphQL Codegen for type-safe queries
+
+BACKEND (smartmeter-backend/):
+-------------------------------
+- Framework: NestJS 11
+- API: GraphQL (Code-first with @nestjs/graphql)
+- Database: PostgreSQL 17
+- ORM: Drizzle ORM
+- Authentication: JWT + Passport
+- File Storage: Local / Azure Blob / GCP Storage (configurable)
+- SMS: Fast2SMS integration (with DLT templates)
+- Email: AWS SES
+- Scheduling: @nestjs/schedule for background tasks
+
+DATABASE:
+---------
+- PostgreSQL with Drizzle ORM
+- Schema-driven with migrations
+- Full audit logging
+
+================================================================================
+                              3. USER ROLES & HIERARCHY
+================================================================================
+
+ROLE HIERARCHY (Creation Permissions):
+--------------------------------------
+SUPER_ADMIN
+    │
+    ▼ creates
+  ADMIN
+    │
+    ▼ creates
+RETAIL_OUTLET (RO)
+    │
+    ▼ creates
+CONTRACTOR / CONSUMER / SUB_USER
+
+ROLE DETAILS:
+-------------
+1. SUPER_ADMIN - System-wide administration
+   - Creates Admin users
+   - Full system access
+   - Login: Email + Password
+
+2. ADMIN - Regional administration
+   - Creates Retail Outlets (ROs)
+   - Manages master data (meters, hierarchy)
+   - Imports consumers via Excel
+   - Login: Email + Password
+
+3. RETAIL_OUTLET (RO) - Operations management
+   - Custodian of smart meter inventory
+   - Verifies consumer sites
+   - Assigns meters to sites
+   - Creates contractors and consumers
+   - Verifies installations
+   - Login: Email + Password
+
+4. CONTRACTOR - Installation and maintenance
+   - Collects meters from RO
+   - Performs physical installations
+   - Uploads installation evidence (photos, GPS, readings)
+   - Login: Email + Password
+
+5. CONSUMER - End user
+   - Uploads site photos
+   - Provides GPS location
+   - Tracks installation status
+   - Login: Phone + OTP (Dummy OTP: 123456 in test mode)
+
+6. SUB_USER - Assistant to RO
+   - Limited RO permissions
+   - Login: Email + Password
+
+DATA ISOLATION:
+- Each role only sees data they created or own
+- Strict filtering at query level
+
+================================================================================
+                              4. CORE DOMAIN MODEL
+================================================================================
+
+ENTITIES:
+---------
+
+1. CONSUMER
+   - A person or organization
+   - Has multiple sites (connections)
+   - Created via Excel import or manually
+
+2. SITE (Connection)
+   - Physical service location
+   - Belongs to one consumer
+   - Can have MULTIPLE meters
+   - Goes through state machine lifecycle
+
+3. METER
+   - Physical smart meter device
+   - Belongs to ONE site at a time
+   - Has specifications (phase, voltage, network type, etc.)
+
+4. SITE-METER CONNECTION (Critical Domain Entity)
+   - NOT a simple join table
+   - Tracks assignment lifecycle
+   - Preserves history (no overwrites)
+   - Supports meter replacements
+   - Stores tariff snapshot
+   - Full audit support
+
+5. INSTALLATION
+   - Tracks installation work
+   - Links to contractor
+   - Has evidence (photos, readings)
+
+6. VERIFICATION
+   - RO/Admin verification of installations
+   - Photo review, seal check, GPS verification
+
+================================================================================
+                              5. SITE STATE MACHINE
+================================================================================
+
+LIFECYCLE STATES:
+-----------------
+CREATED
+    │
+    ▼ (Consumer uploads photo/location)
+SITE_PENDING
+    │
+    ▼ (RO verifies)
+SITE_VERIFIED  ◄─── Tariff gets locked here
+    │
+    ▼ (RO schedules appointment)
+INSTALLATION_SCHEDULED
+    │
+    ▼ (RO assigns meter)
+METER_ASSIGNED
+    │
+    ▼ (Contractor starts work)
+INSTALLATION_IN_PROGRESS
+    │
+    ▼ (Contractor completes)
+INSTALLED
+    │
+    ▼ (RO/Admin verifies)
+VERIFICATION_PENDING
+    │
+    ▼ (Approved)
+VERIFIED
+    │
+    ▼ (Billing handoff)
+BILLED
+
+FAILED ◄─── Can happen at any stage
+
+METER STATES:
+-------------
+AVAILABLE → RESERVED → INSTALLED
+RESERVED → TIMEOUT/FAILURE → AVAILABLE
+
+RULES:
+- No step can be skipped
+- Illegal transitions are blocked
+- Every state change is audited
+
+================================================================================
+                              6. END-TO-END INSTALLATION FLOW
+================================================================================
+
+STEP 1: Consumer Registration (Admin)
+-------------------------------------
+- Admin uploads Excel with consumer data
+- System creates Consumer + Site records
+- Site State: CREATED
+
+STEP 2: Consumer Site Submission (Consumer)
+-------------------------------------------
+- Consumer logs in via OTP
+- Uploads geo-tagged site photo (mandatory)
+- Confirms address and contact details
+- Site State: SITE_PENDING
+
+STEP 3: RO Site Verification (RO)
+---------------------------------
+- RO reviews submitted sites
+- Verifies: accessibility, electrical readiness, network availability
+- Sets required meter specs (phase, voltage)
+- Site State: SITE_VERIFIED (tariff locked)
+
+STEP 4: Appointment & Meter Assignment (RO)
+-------------------------------------------
+- RO schedules appointment with consumer
+- Assigns meter from inventory to site
+- Assigns contractor for installation
+- Site State: METER_ASSIGNED
+
+STEP 5: Installation (Contractor)
+---------------------------------
+- Contractor collects meter from RO
+- Installs at consumer premises
+- Captures: geo-tagged photos, seal verification, meter reading
+- Site State: INSTALLED
+
+STEP 6: Verification & Billing (RO/Admin)
+-----------------------------------------
+- RO verifies installation evidence
+- Checks photos, seal, communication LED, reading
+- Site State: VERIFIED → BILLED (billing handoff)
+
+================================================================================
+                              7. BACKEND MODULES
+================================================================================
+
+/src/modules/
+├── auth/              - JWT authentication, OTP login, throttling
+├── users/             - User management (all roles)
+├── consumers/         - Consumer CRUD, profile management
+├── sites/             - Site management, state machine logic
+├── meters/            - Meter inventory management
+├── meter-specs/       - Meter specifications
+├── site-meter-connections/ - Meter-site assignments (domain entity)
+├── installations/     - Installation tracking
+├── installation-evidence/ - Photos, readings evidence
+├── verifications/     - Installation verification
+├── contractors/       - Contractor management
+├── retail-outlets/    - RO management
+├── hierarchy/         - Circle/Division/Subdivision/RO hierarchy
+├── billing/           - Billing export and handoff
+├── files/             - File upload service (local/cloud)
+├── import-logs/       - Excel import tracking
+├── meter-readings/    - Meter reading records
+├── notification/      - SMS/Email notifications
+├── scheduler/         - Background job scheduling
+├── audit/             - Audit log management
+└── support/           - Support ticket system
+
+================================================================================
+                              8. DATABASE SCHEMA
+================================================================================
+
+KEY TABLES:
+-----------
+- users                    - All user accounts
+- consumers                - Consumer master data
+- consumer_sites           - Site/connection data
+- meters                   - Meter inventory
+- meter_specs              - Meter specifications
+- site_meter_connections   - Meter-site linkage (domain entity)
+- installations            - Installation records
+- installation_evidence    - Evidence photos/data
+- verifications            - Verification records
+- contractors              - Contractor profiles
+- retail_outlets           - RO profiles
+- hierarchy                - Geographic hierarchy
+- imports                  - Import job tracking
+- files                    - Uploaded file metadata
+- audit_logs               - Complete audit trail
+- billing_exports          - Billing handoff records
+- refresh_tokens           - JWT refresh tokens
+- auth_throttle            - Login attempt throttling
+
+================================================================================
+                              9. FRONTEND STRUCTURE
+================================================================================
+
+/src/app/
+├── (auth)/            - Login pages
+├── (admin)/admin/     - Admin dashboard & pages
+│   ├── admins/        - Super Admin → Manage Admins
+│   ├── ros/           - Admin → Manage ROs
+│   ├── master/        - Master data management
+│   ├── import/        - Excel import
+│   └── consumers/     - Consumer management
+├── (ro)/ro/           - Retail Outlet dashboard & pages
+│   ├── site-review/   - Site verification
+│   ├── assign/        - Meter assignment
+│   ├── schedule/      - Appointment scheduling
+│   ├── inventory/     - Meter inventory
+│   └── verify/        - Installation verification
+├── (consumer)/consumer/ - Consumer dashboard & pages
+│   └── sites/         - Site photo/location upload
+└── (contractor)/contractor/ - Contractor pages
+    └── installations/ - Installation tasks
+
+/src/graphql/          - GraphQL queries & mutations
+/src/components/       - Reusable UI components
+/src/hooks/            - Custom React hooks (camera, GPS, QR)
+/src/lib/              - Utilities and Apollo client
+/src/types/            - TypeScript type definitions
+
+================================================================================
+                              10. KEY FEATURES
+================================================================================
+
+AUTHENTICATION:
+- JWT-based with refresh tokens
+- Role-based access control (RBAC)
+- OTP login for consumers (SMS via Fast2SMS)
+- Time-based throttling for failed attempts
+- Configurable OTP mode (DUMMY/ACTUAL)
+
+FILE UPLOADS:
+- Multi-provider storage (Local, Azure, GCP)
+- Configurable via STORAGE_MODE env variable
+- Private and public bucket support
+- Signed URLs for secure access
+
+EXCEL IMPORTS:
+- Consumer data import with validation
+- Meter data import
+- Progress tracking with import logs
+- Error handling and reporting
+
+NOTIFICATIONS:
+- SMS via Fast2SMS with DLT templates
+- Email via AWS SES
+- Welcome messages, OTP delivery, status updates
+
+AUDIT LOGGING:
+- Every state change logged
+- Actor, role, entity, action, timestamp
+- Old state → New state tracking
+- Full traceability
+
+GEO-TAGGING:
+- GPS capture via browser
+- Geo-tagged photo capture
+- Location verification
+
+QR SCANNING:
+- Webcam-based QR scanning
+- Meter QR code support
+- Consumer verification
+
+================================================================================
+                              11. BUSINESS RULES (STRICT)
+================================================================================
+
+1. A consumer can have multiple sites
+2. A site can have multiple meters
+3. A meter can be attached to only one site at a time
+4. Site-meter linkage must use the domain join entity
+5. Assignment must never overwrite history
+6. Replacement must create a new record
+7. Tariff code must be persisted and immutable after verification
+8. Meter compatibility must be validated against site requirements
+9. Installation cannot happen before assignment
+10. Verification cannot happen before installation
+11. Billing cannot happen before verification
+12. No step can be skipped
+13. Every state change must be audited
+14. Every action must be timestamped
+15. Frontend is NEVER the authority
+16. Backend enforces ALL business logic
+
+================================================================================
+                              12. ENVIRONMENT CONFIGURATION
+================================================================================
+
+KEY ENVIRONMENT VARIABLES:
+--------------------------
+# Application
+PORT=3001
+NODE_ENV=development
+
+# Database
+DATABASE_URL=postgres://user:pass@localhost:5432/mescom
+
+# JWT
+JWT_SECRET=your-secret
+JWT_EXPIRES_IN=7d
+
+# OTP Mode
+OTP_MODE=DUMMY           # DUMMY = use 123456, ACTUAL = real SMS
+OTP_DUMMY_CODE=123456    # Custom dummy code
+
+# Storage
+STORAGE_MODE=local       # local, azure, gcp
+LOCAL_STORAGE_PATH=./storage
+
+# SMS
+SMS_PROVIDER=fast2sms
+SMS_GATEWAY_ENABLED=false
+FAST2SMS_API_KEY=your-key
+
+# Email
+EMAIL_ENABLED=false
+AWS_REGION=ap-south-1
+
+================================================================================
+                              13. RUNNING THE APPLICATION
+================================================================================
+
+BACKEND:
+--------
+cd smartmeter-backend
+pnpm install
+pnpm run start:dev
+# Runs on http://localhost:3001
+# GraphQL Playground: http://localhost:3001/graphql
+
+FRONTEND:
+---------
+cd smartmeter-frontend
+pnpm install
+pnpm run dev
+# Runs on http://localhost:3000
+
+DATABASE:
+---------
+# Push schema changes
+cd smartmeter-backend
+pnpm run db:push
+
+# Run migrations
+pnpm run db:migrate
+
+# Seed database
+pnpm run db:seed
+
+# Open Drizzle Studio
+pnpm run db:studio
+
+================================================================================
+                              14. TEST CREDENTIALS
+================================================================================
+
+Super Admin: superadmin@mescom.gov / admin123
+Admin:       admin@mescom.gov / admin123
+RO:          ro@mescom.gov / retail123
+Contractor:  contractor@example.com / contractor123
+Consumer:    (any registered phone) / OTP: 123456
+
+================================================================================
+                              15. API DOCUMENTATION
+================================================================================
+
+- Consumer API: /docs/CONSUMER_API.md
+- Contractor API: /docs/CONTRACTOR_API.md
+- DLT Templates: /docs/DLT_TEMPLATES.md
+- Flow Documentation: /docs/FLOW_DOCUMENTATION.md
+- Project Brain (Master Reference): /docs/PROJECT_BRAIN.md
+
+================================================================================
+                              16. FORBIDDEN PATTERNS
+================================================================================
+
+❌ CRUD-only modeling
+❌ No state machines
+❌ No audit logs
+❌ Meter directly linked to consumer (must go through site)
+❌ No site abstraction
+❌ No join-domain entity
+❌ No tariff persistence
+❌ Overwriting assignments
+❌ Skippable steps
+❌ Frontend making business decisions
+❌ Hardcoded permissions
+
+================================================================================
+                           END OF PROJECT DESCRIPTION
+================================================================================

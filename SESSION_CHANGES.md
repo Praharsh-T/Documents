@@ -6,6 +6,218 @@ This document tracks all changes made during development sessions. Update this f
 
 ---
 
+## Session: 19 February 2026 (Evening) - Consumer Data Isolation & Subscriptions Module
+
+### 1. Consumer `createdBy` Column Added
+
+**Problem:** ADMINs could see ALL consumers regardless of who created them. Required data isolation so each ADMIN only sees consumers they created/imported.
+
+#### Schema Change
+**File:** `/user-service/src/database/schema/consumers.ts`
+- Added `createdBy: uuid('created_by').references(() => users.id)` column
+- Added `index('consumers_created_by_idx').on(table.createdBy)` index
+
+#### Service Change
+**File:** `/user-service/src/modules/consumers/consumers.service.ts`
+- `create()` now saves `createdBy: createdBy` when inserting
+- `createMany()` passes `createdBy` through to each `create()` call
+
+#### Migration
+**File:** `/user-service/src/database/migrations/0011_freezing_the_initiative.sql`
+```sql
+ALTER TABLE "consumers" ADD COLUMN "created_by" uuid;
+ALTER TABLE "consumers" ADD CONSTRAINT "consumers_created_by_users_id_fk"
+  FOREIGN KEY ("created_by") REFERENCES "users"("id");
+CREATE INDEX "consumers_created_by_idx" ON "consumers" ("created_by");
+```
+> ⚠️ Existing consumers will have `createdBy = NULL`. Only newly created consumers track the creator.
+
+---
+
+### 2. ADMIN Data Isolation - Changed from State-Based to Creator-Based
+
+**Problem:** Previous logic used complex association → state code → state name → consumerSites.state filtering. This was incorrect and overly complex.
+
+**File:** `/user-service/src/modules/consumers/consumers.service.ts`
+
+#### `getAccessContext()` - Simplified Return Type
+```typescript
+// BEFORE
+{ roIds: string[], subdivisionIds: string[], stateNames: string[] }
+
+// AFTER
+{ roIds: string[], subdivisionIds: string[], createdByUserId: string | null }
+```
+
+#### ADMIN Logic Changed
+```typescript
+// BEFORE: Complex association → stateCode → stateName lookup (multiple DB queries)
+// AFTER: Single return
+if (userContext.role === UserRole.ADMIN) {
+  return { roIds: [], subdivisionIds: [], createdByUserId: userContext.id };
+}
+```
+
+#### `findAll()` - New Filter Logic
+```typescript
+// ADMIN: filter by consumers.createdBy = userId
+if (accessContext.createdByUserId) {
+  conditions.push(eq(consumers.createdBy, accessContext.createdByUserId));
+}
+// RO/SUB_USER: unchanged - filter via consumerSites join
+```
+
+#### Data Isolation Summary
+| Role | Sees |
+|------|------|
+| `SUPER_ADMIN` | All consumers |
+| `ADMIN` | Only consumers they created (`createdBy = userId`) |
+| `RETAIL_OUTLET` | Consumers with sites in their subdivision |
+| `SUB_USER` | Consumers with sites in parent RO's subdivision |
+
+---
+
+### 3. Removed Stale Imports from Consumers Service
+
+**File:** `/user-service/src/modules/consumers/consumers.service.ts`
+- Removed `associationUsers`, `associationStates` imports from `associations` schema
+- Removed `stateMaster` import from `marketplace/master-states`
+- Removed `inArray` was kept (still used for site-based filtering)
+
+---
+
+### 4. Role Comparison Fix - String Literals → Enum Values
+
+**Problem:** TypeScript error: `The two values in this comparison do not have a shared enum type`
+
+**File:** `/user-service/src/modules/consumers/consumers.service.ts`
+
+Replaced all string literal role comparisons with `UserRole` enum:
+```typescript
+// BEFORE
+if (userContext.role === 'SUPER_ADMIN') { ... }
+if (userContext.role === 'ADMIN') { ... }
+if (userContext.role === 'RETAIL_OUTLET') { ... }
+if (userContext.role === 'SUB_USER') { ... }
+
+// AFTER
+if (userContext.role === UserRole.SUPER_ADMIN) { ... }
+if (userContext.role === UserRole.ADMIN) { ... }
+if (userContext.role === UserRole.RETAIL_OUTLET) { ... }
+if (userContext.role === UserRole.SUB_USER) { ... }
+```
+
+---
+
+### 5. Minor Lint Fix - `let` → `const` for `total`
+
+**File:** `/user-service/src/modules/consumers/consumers.service.ts`
+- Changed `let total: number` declaration + separate assignment to `const total = countResult[0]?.count || 0`
+
+---
+
+### 6. Installed Missing AWS SDK Package
+
+**File:** `/user-service/package.json`
+```bash
+pnpm add @aws-sdk/client-sesv2
+```
+Previous `@aws-sdk/client-ses` was replaced with `client-sesv2` (used by `email.service.ts`).
+
+---
+
+### 7. Subscriptions Module - Contractor Premium Upgrade ✅ NEW MODULE
+
+**New files created:**
+
+| File | Description |
+|------|-------------|
+| `/user-service/src/modules/marketplace/subscriptions/subscriptions.types.ts` | GraphQL types, enums, inputs |
+| `/user-service/src/modules/marketplace/subscriptions/subscriptions.service.ts` | Core business logic |
+| `/user-service/src/modules/marketplace/subscriptions/subscriptions.resolver.ts` | GraphQL queries + mutations |
+| `/user-service/src/modules/marketplace/subscriptions/subscriptions.scheduler.ts` | Daily expiry cron job |
+| `/user-service/src/modules/marketplace/subscriptions/subscriptions.module.ts` | NestJS module |
+| `/user-service/src/modules/marketplace/subscriptions/index.ts` | Barrel exports |
+
+#### Subscription Plans
+| Plan | Duration | Price | Discount | Final |
+|------|----------|-------|----------|-------|
+| MONTHLY | 1 month | ₹499 | 0% | ₹499 |
+| QUARTERLY | 3 months | ₹1,497 | 10% | ₹1,347 |
+| YEARLY | 12 months | ₹5,988 | 25% | ₹4,491 |
+
+#### Contractor Upgrade Flow
+```
+1. GET subscriptionPlans              → View pricing
+2. GET mySubscriptionStatus           → Check current status + canUpgrade/canRenew
+3. MUTATION initiateSubscriptionUpgrade(contractorId, duration)
+   → Returns paymentIntent { id, amount, paymentLink, orderId, expiresAt (30 min) }
+4. Contractor pays via paymentLink (currently mock URL)
+5. MUTATION confirmSubscriptionPayment(paymentIntentId)
+   → Sets subscriptionType = PREMIUM
+   → Sets subscriptionValidTill = now + duration (or extends from existing expiry)
+   → Creates record in mp_contractor_subscriptions
+```
+
+#### Admin Override
+```graphql
+# Admin can set subscription directly without payment
+mutation adminSetContractorSubscription(input: AdminSetSubscriptionInput!)
+```
+
+#### Expiry Scheduler
+- Runs **daily at midnight** via `@Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)`
+- Also runs **10 seconds after server startup**
+- Finds all `subscriptionType = PREMIUM` where `subscriptionValidTill <= NOW`
+- Downgrades each to `FREE`, deactivates old record, creates new FREE record
+
+#### GraphQL API Added
+```graphql
+# Queries
+subscriptionPlans: [SubscriptionPlan!]!                 # Public
+mySubscriptionStatus: SubscriptionStatus!               # CONTRACTOR
+mySubscriptionHistory: [ContractorSubscription!]!       # CONTRACTOR
+contractorSubscriptionStatus(contractorId: ID!): SubscriptionStatus!  # ADMIN
+contractorSubscriptionHistory(contractorId: ID!): [ContractorSubscription!]!  # ADMIN
+subscriptionPaymentIntent(id: ID!): SubscriptionPaymentIntent  # Auth
+
+# Mutations
+initiateSubscriptionUpgrade(input: ...): SubscriptionUpgradeResponse!   # CONTRACTOR
+confirmSubscriptionPayment(input: ...): SubscriptionConfirmResponse!     # CONTRACTOR
+adminSetContractorSubscription(input: ...): SubscriptionConfirmResponse! # ADMIN
+```
+
+#### Marketplace Module Updated
+**File:** `/user-service/src/modules/marketplace/marketplace.module.ts`
+- Added `SubscriptionsService`, `SubscriptionsResolver`, `SubscriptionsScheduler` to providers
+- Added `SubscriptionsService` to exports
+
+#### Types Index Updated
+**File:** `/user-service/src/modules/marketplace/types/index.ts`
+- Added `export * from '../subscriptions/subscriptions.types'`
+
+#### ⚠️ Production TODOs
+- Replace in-memory `paymentIntents` Map with DB table or Redis
+- Wire `paymentLink` to real Cashfree payment order creation
+- Add Cashfree webhook endpoint to auto-confirm payment
+
+---
+
+### 8. MARKETPLACE_IMPLEMENTATION_PLAN.md Updated
+
+**File:** `/docs/MARKETPLACE_IMPLEMENTATION_PLAN.md`
+- Status updated to `In Progress (Subscriptions Module ✅ COMPLETED)`
+- `contractor_subscriptions` schema section marked ✅ IMPLEMENTED with pricing table
+- Added full `SubscriptionsService` and `SubscriptionsScheduler` documentation in Section 4.2
+- Updated GraphQL mutations: replaced `upgradeSubscription` with actual implemented mutations
+- Added all new subscription queries to GraphQL queries section
+- Added `adminSetContractorSubscription` to admin mutations
+- Subscriptions folder marked ✅ IMPLEMENTED in new files section
+- Phase 5 checklist + metrics updated
+- Added **Appendix D** with full flow documentation, GraphQL types reference, and production TODOs
+
+---
+
 ## Session: 19 February 2026 - Backend Restructuring & Fixes
 
 ### 1. Bug Fixes

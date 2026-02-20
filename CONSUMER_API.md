@@ -1,14 +1,20 @@
 # MESCOM Smart Meter System - Consumer API Documentation
 
-**Version:** 3.2.0  
-**Last Updated:** 12 February 2026  
+**Version:** 3.3.0  
+**Last Updated:** 20 February 2026  
 **GraphQL Endpoint:** `http://localhost:3001/graphql`
 
 ---
 
 ## Overview
 
-This document describes the API available for Consumer mobile applications. Consumers use **Phone + OTP** based authentication and can view their sites, track installation status, upload site photos, and receive notifications.
+This document describes the API available for Consumer applications. Consumers use **Phone + OTP** based authentication and can view their sites, track installation status, upload site photos, and book electrical services via the Marketplace.
+
+### Key Changes (v3.3.0)
+- **Marketplace Added:** Consumers can now browse services, search contractors, and book jobs via the Marketplace module
+- **Payment-First Model:** Consumers pay before the job is accepted; if rejected by contractor, auto-refund is issued
+- **Data Isolation Fix:** ADMIN role now only sees consumers they personally created/imported (via `createdBy` field)
+- **Consumer `createdBy` Column:** New column tracks which ADMIN created the consumer record
 
 ### Key Changes (v3.2.0)
 - **Delayed Registration:** Consumers can only login after RO activates their site
@@ -651,10 +657,12 @@ Consumers are created by ADMIN users via Excel import.
 | Role | Can See Consumers |
 |------|-------------------|
 | SUPER_ADMIN | All consumers |
-| ADMIN | All consumers (imports them) |
+| ADMIN | Only consumers they created / imported (`createdBy = userId`) |
 | RETAIL_OUTLET | Consumers whose sites are in their subdivision |
-| SUB_USER | Same as parent RO |
+| SUB_USER | Same as parent RO's subdivision |
 | CONSUMER | Only their own profile |
+
+> **Note (v3.3.0):** ADMIN data isolation changed from state-based to creator-based. Each ADMIN now sees only the consumers they imported or manually created. This is enforced via the `createdBy` column added to the `consumers` table.
 
 ---
 
@@ -681,6 +689,360 @@ Consumers are created by ADMIN users via Excel import.
 
 ---
 
+---
+
+## Marketplace (Consumer)
+
+Consumers can browse electrical services and book licensed contractors through the marketplace.
+
+### Marketplace Flow
+
+```
+1. Browse service categories (public)
+2. Choose service → Search contractors in your village
+3. Select contractor → createMarketplaceJob (payment-first)
+   → Returns paymentUrl + jobId
+4. Pay via payment link
+5. Job status: PAYMENT_PENDING → REQUESTED
+6. Contractor accepts (ACCEPTED) or rejects (REJECTED → auto-refund)
+7. If accepted: Contractor generates Start OTP → you verify → STARTED
+8. Contractor generates Completion OTP → you verify → COMPLETED
+9. Rate the contractor (1-5 stars)
+10. Job CLOSED
+```
+
+---
+
+### M1. Browse Services with Prices
+
+Get all services with their current price for your area type.
+
+```graphql
+query GetMarketplaceServicesWithPrices($areaType: MarketplaceAreaType!) {
+  marketplaceServicesWithPrices(areaType: $areaType) {
+    id
+    name
+    description
+    category {
+      id
+      name
+      code
+      isFreeAvailable
+    }
+    uom {
+      id
+      name
+      code
+    }
+    isFreeAvailable
+    currentPrice
+  }
+}
+```
+
+**Variables:**
+```json
+{ "areaType": "URBAN" }
+```
+
+**Area Types:** `URBAN` | `SEMI_URBAN` | `RURAL`
+
+**Note:** `isFreeAvailable: true` = service is available to all contractors. `isFreeAvailable: false` = PREMIUM contractor only.
+
+---
+
+### M2. Browse Services by Category
+
+```graphql
+query GetMarketplaceServicesByCategory($areaType: MarketplaceAreaType!) {
+  marketplaceServicesByCategory(areaType: $areaType) {
+    category {
+      id
+      name
+      code
+    }
+    services {
+      id
+      name
+      description
+      isFreeAvailable
+      currentPrice
+      uom {
+        name
+        code
+      }
+    }
+  }
+}
+```
+
+---
+
+### M3. Search Contractors
+
+Search for contractors who offer a specific service in your village.
+
+```graphql
+query SearchMarketplaceContractors($input: ContractorSearchInput!) {
+  searchMarketplaceContractors(input: $input) {
+    items {
+      contractorId
+      contractorName
+      companyName
+      phone
+      ratingAvg
+      totalRatings
+      totalJobsCompleted
+      isPremiumContractor
+      priceForService
+    }
+    pagination {
+      page
+      limit
+      total
+      totalPages
+    }
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "serviceId": "uuid-of-service",
+    "locationId": "uuid-of-your-village",
+    "page": 1,
+    "limit": 10
+  }
+}
+```
+
+**`locationId`** is the UUID of your village from the marketplace locations table.
+
+---
+
+### M4. Get Contractor Profile
+
+```graphql
+query GetMarketplaceContractorProfile($contractorId: ID!) {
+  marketplaceContractorProfile(contractorId: $contractorId) {
+    id
+    contractorId
+    contractorName
+    companyName
+    phone
+    email
+    subscriptionType
+    ratingAvg
+    totalRatings
+    totalJobsCompleted
+    isMarketplaceActive
+  }
+}
+```
+
+---
+
+### M5. Get Contractor Reviews
+
+```graphql
+query GetMarketplaceContractorReviews($contractorId: ID!, $page: Int, $limit: Int) {
+  marketplaceContractorReviews(contractorId: $contractorId, page: $page, limit: $limit) {
+    items {
+      id
+      rating
+      comment
+      consumerName
+      serviceName
+      createdAt
+    }
+    pagination {
+      page
+      limit
+      total
+    }
+    summary {
+      averageRating
+      totalReviews
+      fiveStars
+      fourStars
+      threeStars
+      twoStars
+      oneStar
+    }
+  }
+}
+```
+
+---
+
+### M6. Book a Job (Payment-First)
+
+Creates a job and returns a payment link. **Consumer must pay before contractor sees the job.**
+
+```graphql
+mutation CreateMarketplaceJob($input: CreateJobInput!) {
+  createMarketplaceJob(input: $input) {
+    jobId
+    jobNumber
+    amount
+    paymentUrl
+    paymentSessionId
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "contractorId": "contractor-uuid",
+    "serviceId": "service-uuid",
+    "locationId": "village-uuid",
+    "quantity": 1,
+    "consumerAddress": "123 Main Street, near temple",
+    "consumerPhone": "9876543210"
+  }
+}
+```
+
+**Response:**
+| Field | Description |
+|-------|-------------|
+| `jobId` | UUID of created job |
+| `jobNumber` | Human-readable number (e.g., `JOB-20260220-0001`) |
+| `amount` | Amount to pay (in ₹) |
+| `paymentUrl` | Redirect consumer here to pay (Cashfree - placeholder in dev) |
+| `paymentSessionId` | Cashfree session ID |
+
+> **After Payment:** Job status moves from `PAYMENT_PENDING` → `REQUESTED`. Contractor is notified.
+
+---
+
+### M7. View My Marketplace Jobs
+
+```graphql
+query GetMyMarketplaceJobs($filters: JobsFilterInput) {
+  myMarketplaceJobs(filters: $filters) {
+    items {
+      id
+      jobNumber
+      status
+      serviceName
+      contractorName
+      contractorPhone
+      locationName
+      consumerAddress
+      priceSnapshot
+      areaTypeSnapshot
+      acceptanceDeadline
+      startDeadline
+      completionDeadline
+      createdAt
+      paidAt
+      acceptedAt
+      rejectedAt
+      startedAt
+      completedAt
+      closedAt
+      rejectionReason
+    }
+    pagination {
+      page
+      limit
+      total
+      totalPages
+      hasNext
+      hasPrev
+    }
+  }
+}
+```
+
+**Filter by status:**
+```json
+{
+  "filters": {
+    "status": "REQUESTED",
+    "page": 1,
+    "limit": 20
+  }
+}
+```
+
+**Job Status Lifecycle:**
+| Status | Description |
+|--------|-------------|
+| `PAYMENT_PENDING` | Created, waiting for consumer payment |
+| `REQUESTED` | Paid, waiting for contractor acceptance |
+| `ACCEPTED` | Contractor accepted |
+| `REJECTED` | Contractor rejected → refund initiated |
+| `STARTED` | Work in progress |
+| `COMPLETED` | Work done, awaiting closure |
+| `CLOSED` | Fully completed |
+| `CANCELLED` | Cancelled by consumer |
+| `REFUNDED` | Refund processed |
+| `SLA_BREACH` | SLA violation detected |
+
+---
+
+### M8. Cancel a Job
+
+Consumer can cancel a job (before it starts).
+
+```graphql
+mutation CancelMarketplaceJob($input: CancelJobInput!) {
+  cancelMarketplaceJob(input: $input) {
+    id
+    jobNumber
+    status
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "jobId": "job-uuid",
+    "reason": "Changed my mind"
+  }
+}
+```
+
+---
+
+### M9. Rate the Contractor
+
+After job is completed, consumer can rate the contractor (1–5 stars).
+
+```graphql
+mutation CreateMarketplaceRating($input: CreateRatingInput!) {
+  createMarketplaceRating(input: $input) {
+    id
+    jobId
+    jobNumber
+    rating
+    comment
+    createdAt
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "jobId": "job-uuid",
+    "rating": 5,
+    "comment": "Excellent work, very professional!"
+  }
+}
+```
+
+---
+
 ## Complete GraphQL Operations Reference
 
 ### Queries
@@ -693,13 +1055,23 @@ Consumers are created by ADMIN users via Excel import.
 | `siteActiveConnections(siteId)` | Get active meter connections |
 | `siteConnectionHistory(siteId)` | Get full connection history |
 | `installationStatusByConsumer(consumerId)` | Get installation summary |
+| `marketplaceServicesWithPrices(areaType)` | Browse services with prices |
+| `marketplaceServicesByCategory(areaType)` | Services grouped by category |
+| `searchMarketplaceContractors(input)` | Search contractors by service + location |
+| `marketplaceContractorProfile(contractorId)` | View contractor profile |
+| `marketplaceContractorReviews(contractorId)` | View contractor reviews |
+| `myMarketplaceJobs(filters)` | View my booked jobs |
 
 ### Mutations
 | Operation | Description |
 |-----------|-------------|
-| `requestOtp(input)` | Request OTP for login |
-| `verifyOtp(input)` | Verify OTP and get token |
+| `requestLoginOtp(input)` | Request OTP for login |
+| `verifyLoginOtp(input)` | Verify OTP and get token |
+| `refreshToken(input)` | Refresh access token |
 | `updateSiteAddress(id, input)` | Update site address |
 | `uploadSitePhotoBase64(id, input)` | Upload photo with base64 |
 | `uploadSitePhoto(id, input)` | Upload photo with pre-uploaded URL |
 | `updateSiteLocation(id, input)` | Update GPS coordinates |
+| `createMarketplaceJob(input)` | Book a service (payment-first) |
+| `cancelMarketplaceJob(input)` | Cancel a pending job |
+| `createMarketplaceRating(input)` | Rate contractor after job |

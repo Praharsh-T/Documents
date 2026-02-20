@@ -1,10 +1,121 @@
 # MESCOM Smart Meter System - Update Log
 
-**Last Updated:** 19 February 2026 (Backend Restructuring & Access Control Fixes)
+**Last Updated:** 20 February 2026 (Consumer Data Isolation, Subscriptions Module & GraphQL Type Fixes)
 
 ---
 
-## 📋 Latest Session Context (19 Feb 2026 - Backend Restructuring)
+## 📋 Latest Session Context (20 Feb 2026 - Subscriptions, Data Isolation & GraphQL Fixes)
+
+### What Was Done This Session:
+
+#### **1. CONSUMER DATA ISOLATION — Creator-Based (Breaking Change)**
+
+**Problem:** ADMINs were seeing ALL consumers regardless of who created them. Required per-ADMIN isolation.
+
+**Schema Change:**
+- Added `createdBy: uuid` column to `consumers` table with FK → `users.id` and an index
+- Migration: `0011_freezing_the_initiative.sql`
+
+**Service Change (`consumers.service.ts`):**
+- `getAccessContext()` now returns `createdByUserId` instead of state-based lookups
+- ADMIN role: `WHERE consumers.created_by = :userId`
+- RO/SUB_USER: unchanged (subdivision-based filtering)
+- SUPER_ADMIN: sees all
+
+**Data Isolation Matrix:**
+| Role | Sees |
+|------|------|
+| SUPER_ADMIN | All consumers |
+| ADMIN | Only consumers they created |
+| RETAIL_OUTLET | Consumers with sites in their subdivision |
+| SUB_USER | Same as parent RO |
+
+---
+
+#### **2. ROLE ENUM COMPARISON FIX**
+
+**Problem:** `consumers.service.ts` compared `userContext.role` (UserRole enum) with raw string literals.
+**Fix:** All comparisons changed to `UserRole.SUPER_ADMIN`, `UserRole.ADMIN`, `UserRole.RETAIL_OUTLET`, `UserRole.SUB_USER`
+
+---
+
+#### **3. CONTRACTOR PREMIUM SUBSCRIPTION MODULE ✅ NEW**
+
+**6 New Files Created:**
+
+| File | Description |
+|------|-------------|
+| `subscriptions/subscriptions.types.ts` | GraphQL types, enums, inputs |
+| `subscriptions/subscriptions.service.ts` | Business logic |
+| `subscriptions/subscriptions.resolver.ts` | GraphQL queries + mutations |
+| `subscriptions/subscriptions.scheduler.ts` | Daily expiry cron job |
+| `subscriptions/subscriptions.module.ts` | NestJS module |
+| `subscriptions/index.ts` | Barrel exports |
+
+**Subscription Plans:**
+| Plan | Duration | Price | Discount | Final |
+|------|----------|-------|----------|-------|
+| MONTHLY | 1 month | ₹499 | 0% | ₹499 |
+| QUARTERLY | 3 months | ₹1,497 | 10% | ₹1,347 |
+| YEARLY | 12 months | ₹5,988 | 25% | ₹4,491 |
+
+**Flow:** `subscriptionPlans` → `initiateSubscriptionUpgrade` → pay → `confirmSubscriptionPayment`
+
+**Scheduler:** `@Cron(EVERY_DAY_AT_MIDNIGHT)` + runs 10s after server startup. Downgrades expired PREMIUM → FREE.
+
+**Payment intents stored in-memory Map** (TODO: move to DB/Redis for production)
+
+**GraphQL API Added:**
+```
+Queries:
+  subscriptionPlans                               # Public
+  mySubscriptionStatus                            # CONTRACTOR
+  mySubscriptionHistory                           # CONTRACTOR
+  contractorSubscriptionStatus(contractorId)      # ADMIN
+  subscriptionPaymentIntent(id)                   # Auth
+
+Mutations:
+  initiateSubscriptionUpgrade(input)              # CONTRACTOR
+  confirmSubscriptionPayment(input)               # CONTRACTOR
+  adminSetContractorSubscription(input)           # ADMIN
+```
+
+---
+
+#### **4. GRAPHQL TYPE FIXES — Service Category & UOM as Objects**
+
+**Problem:** `category` and `uom` on `MarketplaceService` are object types (`ServiceCategoryType` / `ServiceUomType`), not scalars. `isPremiumOnly` does not exist on `MarketplaceService` — the correct field is `isFreeAvailable` on `ServiceCategoryType`.
+
+**Files Fixed:**
+
+**Frontend (`web-frontend`):**
+- `src/graphql/marketplace.ts`
+  - `MARKETPLACE_SERVICE_FRAGMENT`: expanded `category` → `{ id name code isFreeAvailable }`, `uom` → `{ id name code requiresQuantity }`, removed `isPremiumOnly`
+  - `GET_MARKETPLACE_SERVICES_WITH_PRICES`: same + replaced `isPremiumOnly` with `isFreeAvailable`
+  - `GET_MARKETPLACE_SERVICES_BY_CATEGORY`: `category` is now object, removed `isPremiumOnly`
+- `src/hooks/marketplace/useMarketplaceServices.ts`
+  - `MarketplaceService.category` changed from `ServiceCategory` string to `ServiceCategoryObject { id name code isFreeAvailable }`
+  - `MarketplaceService.uom` changed from `ServiceUom` string to `ServiceUomObject { id name code requiresQuantity }`
+  - `isPremiumOnly` removed; `isFreeAvailable` added to `ServiceWithPrice`
+- `src/app/(admin)/admin/marketplace/services/page.tsx` — Uses `category?.code` for filter, `category?.name` for display, `!category?.isFreeAvailable` for Premium badge; removed `isPremiumOnly` checkbox from create modal
+- `src/app/(admin)/admin/marketplace/pricing/page.tsx` — Uses `category?.name` and `uom?.name` instead of `.replace(/_/g, ' ')`
+- `src/app/(admin)/admin/marketplace/sla/page.tsx` — Same fix
+
+**Backend (`user-service`):**
+- `contractor-profile.types.ts` — Added `@IsOptional()`, `@IsInt()`, `@Min(1)` to `page` and `limit` fields in `ContractorProfileFilterInput`. This fixed: `"property page should not exist, property limit should not exist"` BadRequestException.
+
+---
+
+#### **5. DOCUMENTATION UPDATES**
+
+- `CONSUMER_API.md` → v3.3.0: Added full Marketplace section (browse, search, book job, track jobs, cancel, rate)
+- `CONTRACTOR_API.md` → v3.3.0: Added full Marketplace section (profile, jobs, OTP flow, subscription upgrade)
+- `MARKETPLACE_IMPLEMENTATION_PLAN.md` → Updated status, Appendix D added
+- `SESSION_CHANGES.md` → Updated with both 19 Feb (evening) and 20 Feb sessions
+
+---
+
+## 📋 Previous Session Context (19 Feb 2026 - Backend Restructuring)
 
 ### What Was Done This Session:
 

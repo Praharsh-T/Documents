@@ -1,14 +1,20 @@
 # MESCOM Smart Meter System - Contractor API Documentation
 
-**Version:** 3.2.0  
-**Last Updated:** 12 February 2026  
+**Version:** 3.3.0  
+**Last Updated:** 20 February 2026  
 **GraphQL Endpoint:** `http://localhost:3001/graphql`
 
 ---
 
 ## Overview
 
-This document describes the API available for Contractor mobile applications. Contractors can use **Phone + OTP** or **Email + Password** based authentication and can view assigned installations, execute work, capture evidence photos, and submit completion.
+This document describes the API available for Contractor applications. Contractors can use **Phone + OTP** or **Email + Password** based authentication, manage meter installations, and participate in the **Marketplace** to receive and execute service jobs.
+
+### Key Changes (v3.3.0)
+- **Marketplace Module Added:** Contractors can now register a marketplace profile, receive job requests, accept/reject them, and manage subscriptions
+- **Premium Subscription:** Contractors can upgrade to PREMIUM (Monthly/Quarterly/Yearly) to access all service categories
+- **Job OTP Flow:** Start and completion of marketplace jobs verified via OTP
+- **Subscription Scheduler:** Expired PREMIUM subscriptions auto-downgrade to FREE daily at midnight
 
 ### Key Changes (v3.2.0)
 - **OTP Login Support:** Contractors can now login via Phone + OTP (in addition to email/password)
@@ -672,6 +678,494 @@ Contractors see only their own installations. They do not have access to:
 
 ---
 
+---
+
+## Marketplace (Contractor)
+
+Contractors participate in the marketplace by maintaining a profile, accepting job requests, and completing work via OTP verification. A **PREMIUM subscription** unlocks all service categories.
+
+---
+
+### Subscription Tiers
+
+| Plan | Duration | Price | Available Services |
+|------|----------|-------|-------------------|
+| FREE | Indefinite | ₹0 | Energy Meter Installation only (`isFreeAvailable: true`) |
+| PREMIUM | 30 / 90 / 365 days | ₹499 / ₹1,347 / ₹4,491 | All service categories |
+
+---
+
+### MP1. Get My Marketplace Profile
+
+```graphql
+query GetMyMarketplaceProfile($contractorId: ID!) {
+  marketplaceContractorProfile(contractorId: $contractorId) {
+    id
+    contractorId
+    contractorName
+    companyName
+    phone
+    email
+    subscriptionType
+    subscriptionValidTill
+    ratingAvg
+    totalRatings
+    slaBreachCount
+    rejectionCount
+    totalJobsCompleted
+    qrProfileToken
+    isMarketplaceActive
+    createdAt
+    updatedAt
+  }
+}
+```
+
+**Note:** `contractorId` is the contractor's record UUID (not user ID).
+
+---
+
+### MP2. Toggle Marketplace Active/Inactive
+
+Contractors can go offline (stop receiving new jobs) at any time.
+
+```graphql
+mutation UpdateContractorMarketplaceProfile($input: UpdateContractorProfileInput!) {
+  updateContractorMarketplaceProfile(input: $input) {
+    id
+    contractorId
+    isMarketplaceActive
+    updatedAt
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "contractorId": "contractor-uuid",
+    "isMarketplaceActive": false
+  }
+}
+```
+
+---
+
+### MP3. View My Marketplace Jobs
+
+```graphql
+query GetMyContractorMarketplaceJobs($filters: JobsFilterInput) {
+  myContractorMarketplaceJobs(filters: $filters) {
+    items {
+      id
+      jobNumber
+      status
+      consumerId
+      consumerName
+      consumerPhone
+      consumerAddress
+      serviceId
+      serviceName
+      locationId
+      locationName
+      priceSnapshot
+      areaTypeSnapshot
+      acceptanceDeadline
+      startDeadline
+      completionDeadline
+      createdAt
+      paidAt
+      acceptedAt
+      rejectedAt
+      startedAt
+      completedAt
+      closedAt
+      rejectionReason
+    }
+    pagination {
+      page
+      limit
+      total
+      totalPages
+      hasNext
+      hasPrev
+    }
+  }
+}
+```
+
+**Filter examples:**
+```json
+{ "filters": { "status": "REQUESTED", "page": 1, "limit": 20 } }
+```
+
+**Job Status Lifecycle:**
+| Status | Description |
+|--------|-------------|
+| `REQUESTED` | Paid by consumer, waiting for your acceptance |
+| `ACCEPTED` | You accepted — start deadline begins |
+| `REJECTED` | You rejected — consumer refunded |
+| `STARTED` | Work in progress |
+| `COMPLETED` | Work done — awaiting closure |
+| `CLOSED` | Fully closed |
+| `SLA_BREACH` | Deadline missed |
+
+---
+
+### MP4. Accept a Job
+
+```graphql
+mutation AcceptMarketplaceJob($input: AcceptJobInput!) {
+  acceptMarketplaceJob(input: $input) {
+    id
+    jobNumber
+    status
+    acceptedAt
+    startDeadline
+    completionDeadline
+  }
+}
+```
+
+**Variables:**
+```json
+{ "input": { "jobId": "job-uuid" } }
+```
+
+**Rules:**
+- Job must be in `REQUESTED` status
+- Must be assigned to this contractor
+- Acceptance deadline applies (set at job creation)
+
+---
+
+### MP5. Reject a Job
+
+```graphql
+mutation RejectMarketplaceJob($input: RejectJobInput!) {
+  rejectMarketplaceJob(input: $input) {
+    id
+    jobNumber
+    status
+    rejectedAt
+    rejectionReason
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "jobId": "job-uuid",
+    "reason": "Not available on requested date"
+  }
+}
+```
+
+**Rules:**
+- Reason is required
+- Triggers automatic refund to consumer
+- Rejection count on contractor profile increments
+
+---
+
+### MP6. Generate OTP (Start or Complete)
+
+Before starting or completing a job, generate an OTP that the consumer verifies.
+
+```graphql
+mutation GenerateMarketplaceOtp($input: GenerateOtpInput!) {
+  generateMarketplaceOtp(input: $input) {
+    id
+    jobId
+    otpType
+    expiresAt
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "jobId": "job-uuid",
+    "otpType": "START_JOB"
+  }
+}
+```
+
+**OTP Types:** `START_JOB` | `COMPLETE_JOB`
+
+> The OTP is sent via SMS to the **consumer's** phone. The contractor then asks the consumer to read it out.
+
+---
+
+### MP7. Verify OTP (Start or Complete Job)
+
+```graphql
+mutation VerifyMarketplaceOtp($input: VerifyMarketplaceOtpInput!) {
+  verifyMarketplaceOtp(input: $input) {
+    id
+    jobNumber
+    status
+    startedAt
+    completedAt
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "jobId": "job-uuid",
+    "code": "123456"
+  }
+}
+```
+
+**Flow:**
+- `START_JOB` OTP verified → Job `ACCEPTED` → `STARTED`
+- `COMPLETE_JOB` OTP verified → Job `STARTED` → `COMPLETED`
+
+---
+
+### MP8. View Subscription Plans
+
+```graphql
+query GetSubscriptionPlans {
+  subscriptionPlans {
+    duration
+    durationMonths
+    price
+    finalPrice
+    discountPercent
+    description
+  }
+}
+```
+
+**Response:**
+| Duration | Months | Price | Discount | Final |
+|----------|--------|-------|----------|-------|
+| MONTHLY | 1 | ₹499 | 0% | ₹499 |
+| QUARTERLY | 3 | ₹1,497 | 10% | ₹1,347 |
+| YEARLY | 12 | ₹5,988 | 25% | ₹4,491 |
+
+---
+
+### MP9. Get My Subscription Status
+
+```graphql
+query GetMySubscriptionStatus {
+  mySubscriptionStatus {
+    currentType
+    isActive
+    validTill
+    daysRemaining
+    canUpgrade
+    canRenew
+  }
+}
+```
+
+---
+
+### MP10. Initiate Subscription Upgrade
+
+```graphql
+mutation InitiateSubscriptionUpgrade($input: InitiateSubscriptionUpgradeInput!) {
+  initiateSubscriptionUpgrade(input: $input) {
+    success
+    message
+    paymentIntent {
+      id
+      amount
+      duration
+      paymentLink
+      orderId
+      expiresAt
+      status
+    }
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "contractorId": "contractor-uuid",
+    "duration": "MONTHLY"
+  }
+}
+```
+
+**Response `paymentIntent`:**
+- `id` — Payment intent UUID (needed for confirm step)
+- `paymentLink` — Redirect contractor here to pay
+- `expiresAt` — Payment intent expires 30 minutes after creation
+
+---
+
+### MP11. Confirm Subscription Payment
+
+After payment is made, confirm to activate PREMIUM.
+
+```graphql
+mutation ConfirmSubscriptionPayment($input: ConfirmSubscriptionPaymentInput!) {
+  confirmSubscriptionPayment(input: $input) {
+    success
+    message
+    newSubscriptionType
+    validTill
+  }
+}
+```
+
+**Variables:**
+```json
+{
+  "input": {
+    "paymentIntentId": "intent-uuid"
+  }
+}
+```
+
+**After confirmation:**
+- `subscriptionType` on contractor profile → `PREMIUM`
+- `subscriptionValidTill` → set to now + duration
+- If already PREMIUM: expiry is **extended** from existing expiry date (not reset)
+
+---
+
+### MP12. View My Subscription History
+
+```graphql
+query GetMySubscriptionHistory {
+  mySubscriptionHistory {
+    id
+    subscriptionType
+    startDate
+    endDate
+    isActive
+    createdAt
+  }
+}
+```
+
+---
+
+### MP13. View My Received Ratings
+
+```graphql
+query GetMyContractorReviews($contractorId: ID!, $page: Int, $limit: Int) {
+  marketplaceContractorReviews(contractorId: $contractorId, page: $page, limit: $limit) {
+    items {
+      id
+      rating
+      comment
+      consumerName
+      serviceName
+      createdAt
+    }
+    pagination {
+      page
+      limit
+      total
+    }
+    summary {
+      averageRating
+      totalReviews
+      fiveStars
+      fourStars
+      threeStars
+      twoStars
+      oneStar
+    }
+  }
+}
+```
+
+---
+
+## Marketplace OTP Flow Diagram
+
+```
+┌─────────────────────────────────────────────────────────┐
+│  Consumer creates job + pays → Job: REQUESTED        │
+└─────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────┐
+│  Contractor views job → acceptMarketplaceJob()       │
+│  Job: REQUESTED → ACCEPTED                          │
+└─────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────┐
+│  Contractor arrives at site                          │
+│  generateMarketplaceOtp(START_JOB)                  │
+│  → OTP sent to consumer's phone                     │
+│  Consumer reads OTP to contractor                    │
+│  verifyMarketplaceOtp(code: "123456")                │
+│  Job: ACCEPTED → STARTED                            │
+└─────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────┐
+│  Work completed                                      │
+│  generateMarketplaceOtp(COMPLETE_JOB)               │
+│  → OTP sent to consumer's phone                     │
+│  Consumer reads OTP to contractor                    │
+│  verifyMarketplaceOtp(code: "654321")                │
+│  Job: STARTED → COMPLETED                           │
+└─────────────────────────────────────────────────────────┘
+              │
+              ▼
+┌─────────────────────────────────────────────────────────┐
+│  Consumer rates contractor → Job: CLOSED            │
+└─────────────────────────────────────────────────────────┘
+```
+
+---
+
+## Marketplace Assigned Locations
+
+```graphql
+query GetMarketplaceContractorLocations($contractorId: ID!) {
+  marketplaceContractorLocations(contractorId: $contractorId) {
+    id
+    locationId
+    villageName
+    districtName
+    stateName
+    areaType
+    isActive
+  }
+}
+```
+
+---
+
+## Marketplace Assigned Services
+
+```graphql
+query GetMarketplaceContractorServices($contractorId: ID!) {
+  marketplaceContractorServices(contractorId: $contractorId) {
+    id
+    serviceId
+    serviceName
+    serviceCategory
+    isActive
+  }
+}
+```
+
+---
+
 ## Complete GraphQL Operations Reference
 
 ### Queries
@@ -679,23 +1173,41 @@ Contractors see only their own installations. They do not have access to:
 |-----------|-------------|
 | `me` | Get current logged-in user |
 | `myContractor` | Get contractor profile |
-| `myInstallations(filters)` | Get assigned installations |
+| `myInstallations(filters)` | Get assigned meter installations |
 | `installation(id)` | Get single installation details |
 | `installations(filters)` | Get all installations (with nested data) |
 | `installationEvidenceList(installationId)` | Get evidence photos |
 | `installationEvidenceSummary(installationId)` | Get evidence count summary |
+| `marketplaceContractorProfile(contractorId)` | Get my marketplace profile |
+| `myContractorMarketplaceJobs(filters)` | View marketplace jobs |
+| `subscriptionPlans` | View subscription pricing |
+| `mySubscriptionStatus` | My current subscription status |
+| `mySubscriptionHistory` | My subscription history |
+| `marketplaceContractorLocations(contractorId)` | My serviceable locations |
+| `marketplaceContractorServices(contractorId)` | My offered services |
+| `marketplaceContractorReviews(contractorId)` | My reviews from consumers |
 
 ### Mutations
 | Operation | Description |
 |-----------|-------------|
-| `login(input)` | Login with phone + password |
-| `updateInstallationStatus(id, input)` | Start/complete installation |
+| `requestLoginOtp(input)` | Request OTP for login |
+| `verifyLoginOtp(input)` | Verify OTP and get token |
+| `login(input)` | Login with email + password |
+| `refreshToken(input)` | Refresh access token |
+| `updateInstallationStatus(id, input)` | Start/complete meter installation |
 | `uploadInstallationEvidence(input)` | Link evidence to installation |
+| `acceptMarketplaceJob(input)` | Accept a marketplace job |
+| `rejectMarketplaceJob(input)` | Reject a marketplace job |
+| `generateMarketplaceOtp(input)` | Generate OTP for start/complete |
+| `verifyMarketplaceOtp(input)` | Verify OTP to start/complete job |
+| `updateContractorMarketplaceProfile(input)` | Toggle active/inactive |
+| `initiateSubscriptionUpgrade(input)` | Start subscription upgrade payment |
+| `confirmSubscriptionPayment(input)` | Confirm payment and activate PREMIUM |
 
 ### REST Endpoints
 | Endpoint | Method | Description |
 |----------|--------|-------------|
-| `/files/upload/private/installation-evidence` | POST | Upload evidence photo |
+| `/files/upload/private/installation-evidence` | POST | Upload installation evidence photo |
 
 ---
 

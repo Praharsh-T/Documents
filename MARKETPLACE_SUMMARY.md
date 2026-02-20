@@ -1,8 +1,16 @@
 # MARKETPLACE INTEGRATION - QUICK REFERENCE SUMMARY
 
 **Generated:** 17 February 2026  
-**Updated:** 18 February 2026  
+**Updated:** 20 February 2026  
 **Full Plan:** See [MARKETPLACE_IMPLEMENTATION_PLAN.md](./MARKETPLACE_IMPLEMENTATION_PLAN.md)
+
+> **Implementation Status (20 Feb 2026):**
+> - ✅ Locations, Services, Pricing, SLA, Contractor Profiles, Jobs modules — **COMPLETE**
+> - ✅ Subscriptions module (FREE/PREMIUM) — **COMPLETE**
+> - ✅ Service `category` and `uom` are **object types**, not enums
+> - ✅ Consumer data isolation — creator-based (`createdBy` column)
+> - ⏳ Cashfree payment integration — payment intents are placeholder (`paymentLink` / `paymentUrl`)
+> - ⏳ Consumer/Contractor marketplace frontend pages — in progress
 
 ---
 
@@ -63,7 +71,7 @@ If Reject: Auto-Refund to Consumer
 | Table | Purpose | Key Fields |
 |-------|---------|------------|
 | `location_master` | LGD villages with admin-classified area type | villageCode, villageName, stateName, districtName, areaType, isClassified |
-| `services` | Service catalog | name, category, uom, isPremiumOnly |
+| `services` | Service catalog | name, `categoryId` (FK → service_categories), `uomId` (FK → service_uoms) |
 | `service_pricing` | Versioned pricing per service+area | serviceId, areaType, basePrice, effectiveFrom |
 | `slas` | Versioned SLA per service+area | serviceId, areaType, acceptanceHours, jobStartHours |
 | `contractor_location_mapping` | Contractor serviceable areas | contractorId, locationId |
@@ -452,11 +460,11 @@ mutation BulkClassifyLocations($villageIds: [ID!]!, $areaType: AreaType!) {
 ## ENVIRONMENT VARIABLES TO ADD
 
 ```env
-# Payment Gateway
-PAYMENT_GATEWAY_PROVIDER=razorpay
-PAYMENT_GATEWAY_KEY=rzp_test_xxx
-PAYMENT_GATEWAY_SECRET=xxx
-PAYMENT_WEBHOOK_SECRET=whsec_xxx
+# Payment Gateway (Cashfree - TODO: not yet wired)
+CASHFREE_APP_ID=your-cashfree-app-id
+CASHFREE_SECRET_KEY=your-cashfree-secret
+CASHFREE_BASE_URL=https://sandbox.cashfree.com/pg
+CASHFREE_WEBHOOK_SECRET=your-webhook-secret
 
 # Marketplace OTP
 MARKETPLACE_OTP_EXPIRY_MINUTES=10
@@ -466,6 +474,8 @@ MARKETPLACE_OTP_MAX_ATTEMPTS=3
 MARKETPLACE_SLA_CHECK_INTERVAL=5
 MARKETPLACE_SUBSCRIPTION_CHECK_INTERVAL=60
 ```
+
+> **Note:** SMS uses the existing `FAST2SMS_API_KEY`. The marketplace OTP notifications go through the same SMS provider.
 
 ---
 

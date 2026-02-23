@@ -1,10 +1,39 @@
 # MESCOM Smart Meter System - Update Log
 
-**Last Updated:** 20 February 2026 (Consumer Data Isolation, Subscriptions Module & GraphQL Type Fixes)
+**Last Updated:** 23 February 2026 (Branding, Login Overrides, Forgot Password, & Multi-Tenancy)
 
 ---
 
-## 📋 Latest Session Context (20 Feb 2026 - Subscriptions, Data Isolation & GraphQL Fixes)
+## 📋 Latest Session Context (23 Feb 2026 - Branding, Login Overrides, Forgot Password, and Multi-Tenancy)
+
+### What Was Done This Session:
+
+#### **1. BRANDING & LOGIN OVERRIDES**
+
+- Applied "KSLECA" branding fix across 12 instances, replacing outdated "KSLECAR".
+- Removed Developer-only overriding parameter `isProd` from the `/login` screen. All environments now strictly present Retail Outlet Portal login directly. The Admin login is correctly hidden and accessible only via query parameter link mapping (`?role=admin`) in the footer.
+- Established Remember Me dual storage (`localStorage` for long term retention vs `sessionStorage` for tab isolation).
+
+#### **2. FORGOT PASSWORD WORKFLOW**
+
+- Fully implemented Auth Service Backend mutations: `requestPasswordReset` (OTP Generation) & `resetPassword` (OTP Hash Verification). Included DLT constraints, anti-enumeration, and backend rate throttling.
+- Fully implemented 3-Step Frontend form wizard on `/forgot-password` connecting React Hook Forms to Apollo GraphQL endpoints.
+
+#### **3. CONSUMER & ADMIN MULTI-TENANCY**
+
+- **Admin Association Filtering (`consumers.service.ts`):** `getAccessContext()` dynamically restricts admin visibility to the states explicitly assigned within their `Associations` table row. Unassigned Admins see zero records.
+- **Consumer Import Protections (Backend):** Excel imports drop and ignore `Meter Number`, `Sold`, `Installed`, and `Service` fields explicitly to preserve integrity, as these fields must originate strictly from physical RO processes.
+
+#### **4. RO WORKFLOWS & ROUTING CLEANUP**
+
+- **Role Permissions:** Revoked `importMeters` Graph permissions from `SUPER_ADMIN` completely; re-assigned uniquely to `RETAIL_OUTLET`. Removed `SUB_USER` ability to render or navigate to Staff creation endpoints `/ro/staff`.
+- **Bulk Imports & RAPDRP:** Migrated the Bulk Meter Upload functionality directly into the `/ro/inventory` space. Added the "Is RAPDRP?" boolean column across the Admin Template, the Single Form inputs, and the GraphQL schema.
+- **Site Review Improvements:** Disabled edits to `requiredPhase` and `requiredVoltage` selects in the site-review, relying entirely on the Excel-originated fields. Bundled the consumer account verification execution `activateConsumerSite` directly within the contractor assignment submit handler `handleAssignAndSendLinks` to seamlessly send Registration SMS alongside assignment.
+- **Contractors Panel:** Constructed the specific detail view page `/ro/contractors/[contractorId]` and updated the main list rows to establish active router links to these individual profiles.
+
+---
+
+## 📋 Previous Session Context (20 Feb 2026 - Subscriptions, Data Isolation & GraphQL Fixes)
 
 ### What Was Done This Session:
 
@@ -13,10 +42,12 @@
 **Problem:** ADMINs were seeing ALL consumers regardless of who created them. Required per-ADMIN isolation.
 
 **Schema Change:**
+
 - Added `createdBy: uuid` column to `consumers` table with FK → `users.id` and an index
 - Migration: `0011_freezing_the_initiative.sql`
 
 **Service Change (`consumers.service.ts`):**
+
 - `getAccessContext()` now returns `createdByUserId` instead of state-based lookups
 - ADMIN role: `WHERE consumers.created_by = :userId`
 - RO/SUB_USER: unchanged (subdivision-based filtering)
@@ -43,14 +74,14 @@
 
 **6 New Files Created:**
 
-| File | Description |
-|------|-------------|
-| `subscriptions/subscriptions.types.ts` | GraphQL types, enums, inputs |
-| `subscriptions/subscriptions.service.ts` | Business logic |
-| `subscriptions/subscriptions.resolver.ts` | GraphQL queries + mutations |
-| `subscriptions/subscriptions.scheduler.ts` | Daily expiry cron job |
-| `subscriptions/subscriptions.module.ts` | NestJS module |
-| `subscriptions/index.ts` | Barrel exports |
+| File                                       | Description                  |
+| ------------------------------------------ | ---------------------------- |
+| `subscriptions/subscriptions.types.ts`     | GraphQL types, enums, inputs |
+| `subscriptions/subscriptions.service.ts`   | Business logic               |
+| `subscriptions/subscriptions.resolver.ts`  | GraphQL queries + mutations  |
+| `subscriptions/subscriptions.scheduler.ts` | Daily expiry cron job        |
+| `subscriptions/subscriptions.module.ts`    | NestJS module                |
+| `subscriptions/index.ts`                   | Barrel exports               |
 
 **Subscription Plans:**
 | Plan | Duration | Price | Discount | Final |
@@ -66,6 +97,7 @@
 **Payment intents stored in-memory Map** (TODO: move to DB/Redis for production)
 
 **GraphQL API Added:**
+
 ```
 Queries:
   subscriptionPlans                               # Public
@@ -89,6 +121,7 @@ Mutations:
 **Files Fixed:**
 
 **Frontend (`web-frontend`):**
+
 - `src/graphql/marketplace.ts`
   - `MARKETPLACE_SERVICE_FRAGMENT`: expanded `category` → `{ id name code isFreeAvailable }`, `uom` → `{ id name code requiresQuantity }`, removed `isPremiumOnly`
   - `GET_MARKETPLACE_SERVICES_WITH_PRICES`: same + replaced `isPremiumOnly` with `isFreeAvailable`
@@ -102,6 +135,7 @@ Mutations:
 - `src/app/(admin)/admin/marketplace/sla/page.tsx` — Same fix
 
 **Backend (`user-service`):**
+
 - `contractor-profile.types.ts` — Added `@IsOptional()`, `@IsInt()`, `@Min(1)` to `page` and `limit` fields in `ContractorProfileFilterInput`. This fixed: `"property page should not exist, property limit should not exist"` BadRequestException.
 
 ---
@@ -122,10 +156,12 @@ Mutations:
 #### **1. BUG FIXES**
 
 **marketplaceJobs Validation Error:**
+
 - Fixed `JobsFilterInput` and `SlaBreachFilterInput` - added `@IsOptional()` to `page` and `limit` fields
 - Error was: `property page should not exist, property limit should not exist`
 
 **SUPER_ADMIN Associations Access:**
+
 - Added `UserRole.SUPER_ADMIN` to all association query decorators
 - SUPER_ADMIN can now query associations (required for admin creation)
 
@@ -134,11 +170,13 @@ Mutations:
 #### **2. ACCESS CONTROL UPDATES**
 
 **Admin Creation - Association Now Mandatory:**
+
 - When SUPER_ADMIN creates an admin, association selection is REQUIRED
 - Shows validation error if no association selected
 - Shows warning if no associations exist
 
 **SUPER_ADMIN Marketplace Restriction:**
+
 - SUPER_ADMIN only sees marketplace stats dashboard (not management UI)
 - All marketplace management pages (locations, services, pricing, SLA, jobs, contractors, categories, UOMs) show "Access Restricted" for SUPER_ADMIN
 - Only ADMIN role can manage marketplace features
@@ -148,6 +186,7 @@ Mutations:
 #### **3. ASSOCIATIONS MODULE - EXTRACTED FROM MARKETPLACE**
 
 **New Standalone Module Created:**
+
 ```
 /modules/associations/
   ├── associations.module.ts
@@ -158,11 +197,13 @@ Mutations:
 ```
 
 **New Database Tables:**
+
 - `associations` (was `mp_admin_associations`)
 - `association_states` (was `mp_admin_association_states`)
 - `association_users` (was `mp_admin_association_users`)
 
 **New GraphQL API (cleaner names):**
+
 - `associations` / `association` / `myAssociation`
 - `createAssociation` / `updateAssociation`
 - `assignStatesToAssociation` / `removeStateFromAssociation`
@@ -173,11 +214,13 @@ Mutations:
 #### **4. LOCATION HIERARCHY - NEW SCHEMA**
 
 **Old Structure (flat):**
+
 ```
 mp_location_master (single table with repeated state/district names)
 ```
 
 **New Hierarchical Structure:**
+
 ```
 service_states
   └── service_districts (FK → state)
@@ -186,6 +229,7 @@ service_states
 ```
 
 **Benefits:**
+
 - No data duplication
 - Proper foreign key relationships
 - Better query performance for hierarchy navigation
@@ -196,15 +240,18 @@ service_states
 ---
 
 ## 📋 Previous Session Context (18 Feb 2026 - Admin Module Completion)
+
 - `VillageOption` - Added required `category: string` field
 
 **Backend Service Changes (`locations.service.ts`):**
+
 - Updated validation: Now requires `villageCategory` in import
 - Error message: `"Row X: Missing required fields (villageCode, villageName, stateCode, districtCode, villageCategory)"`
 - Updated `getVillages()` to include `category` field in response
 - Updated `mapToDto()` to handle villageCategory with fallback to 'Unknown'
 
 **Frontend Changes:**
+
 - `useMarketplaceLocations.ts` - Added `category: string` to `VillageOption` interface
 - `marketplace.ts` GraphQL - Added `category` to `GET_MARKETPLACE_VILLAGES` query
 - Villages now display category badge in the locations browser
@@ -213,15 +260,15 @@ service_states
 
 ### ✅ COMPLETED COMPONENTS (This Session)
 
-| Component | Location | Status |
-|-----------|----------|--------|
-| Admin Associations SUPER_ADMIN restriction | Backend resolver | ✅ Done |
-| Associations UI removed from Admin | Frontend pages/hooks | ✅ Done |
-| Admin creation with Association dropdown | `/admin/admins/page.tsx` | ✅ Done |
-| Location import moved to Marketplace | `/admin/marketplace/locations/page.tsx` | ✅ Done |
-| Location import removed from Upload | `/admin/upload/page.tsx` | ✅ Done |
-| Village Category made required | Backend types & service | ✅ Done |
-| Village Category in frontend | Hooks & GraphQL | ✅ Done |
+| Component                                  | Location                                | Status  |
+| ------------------------------------------ | --------------------------------------- | ------- |
+| Admin Associations SUPER_ADMIN restriction | Backend resolver                        | ✅ Done |
+| Associations UI removed from Admin         | Frontend pages/hooks                    | ✅ Done |
+| Admin creation with Association dropdown   | `/admin/admins/page.tsx`                | ✅ Done |
+| Location import moved to Marketplace       | `/admin/marketplace/locations/page.tsx` | ✅ Done |
+| Location import removed from Upload        | `/admin/upload/page.tsx`                | ✅ Done |
+| Village Category made required             | Backend types & service                 | ✅ Done |
+| Village Category in frontend               | Hooks & GraphQL                         | ✅ Done |
 
 ---
 
@@ -230,6 +277,7 @@ service_states
 #### **Backend (NestJS + GraphQL)**
 
 **Database Schemas (9 files):**
+
 - `marketplace-locations.ts` - Location master with LGD hierarchy & area classification
 - `marketplace-services.ts` - Service catalog
 - `marketplace-pricing.ts` - Versioned pricing per service + area type
@@ -241,11 +289,13 @@ service_states
 - `marketplace-ratings.ts` - Dual rating system (consumer ↔ contractor)
 
 **Type Files (9 files):**
+
 - GraphQL types for all marketplace entities
 - Input types for mutations
 - Enums: `MarketplaceAreaType`, `ServiceCategory`, `UnitOfMeasure`, `JobStatus`, `OtpType`, `SubscriptionType`
 
 **Service Files (8 files):**
+
 - `locations.service.ts` - Excel import, area classification, search
 - `services.service.ts` - CRUD, availability checks
 - `pricing.service.ts` - Versioned pricing resolution
@@ -256,6 +306,7 @@ service_states
 - `ratings.service.ts` - Rating submission & average calculation
 
 **Resolver Files (8 files):**
+
 - All GraphQL queries and mutations for each service
 
 ---
@@ -263,10 +314,12 @@ service_states
 #### **Frontend (Next.js + Apollo Client)**
 
 **GraphQL Operations (`marketplace.ts`):**
+
 - ~35 queries and mutations matching backend schema
 - Full type generation via codegen
 
 **Custom Hooks (6 files):**
+
 - `useMarketplaceServices.ts` - Service listing
 - `useMarketplaceJobs.ts` - Job management
 - `useMarketplaceContractors.ts` - Contractor search
@@ -275,12 +328,14 @@ service_states
 - `useMarketplaceRatings.ts` - Rating submission
 
 **Shared Components (10 files):**
+
 - `ServiceCard.tsx`, `PriceDisplay.tsx`, `SLAIndicator.tsx`
 - `JobTimeline.tsx`, `OTPModal.tsx`, `RatingStars.tsx`
 - `SubscriptionBadge.tsx`, `AreaTypeBadge.tsx`
 - `ContractorCard.tsx`, `JobStatusBadge.tsx`
 
 **Consumer Pages (5 pages):**
+
 - `/consumer/marketplace/page.tsx` - Services listing
 - `/consumer/marketplace/service/[id]/page.tsx` - Service detail & booking
 - `/consumer/marketplace/contractors/page.tsx` - Contractor search
@@ -288,12 +343,14 @@ service_states
 - `/consumer/marketplace/jobs/[id]/page.tsx` - Job tracking
 
 **Contractor Pages (4 pages):**
+
 - `/contractor/marketplace/page.tsx` - Dashboard
 - `/contractor/marketplace/jobs/page.tsx` - Job list with SLA indicators
 - `/contractor/marketplace/jobs/[id]/page.tsx` - Job detail with OTP verification
 - `/contractor/marketplace/profile/page.tsx` - Ratings & performance
 
 **Admin Pages (5 pages):**
+
 - `/admin/marketplace/page.tsx` - Management dashboard
 - `/admin/marketplace/services/page.tsx` - Service CRUD
 - `/admin/marketplace/pricing/page.tsx` - Pricing matrix editor
@@ -307,6 +364,7 @@ service_states
 #### **Backend - Payment Integration (Cashfree)**
 
 **Files to Create:**
+
 1. `src/modules/marketplace/payments/payments.module.ts`
 2. `src/modules/marketplace/payments/payments.service.ts`
    - `createPaymentOrder()` - Create Cashfree order
@@ -319,18 +377,21 @@ service_states
 5. `src/modules/marketplace/payments/payments.types.ts`
 
 **Refund Handling:**
+
 1. `src/modules/marketplace/refunds/refunds.service.ts`
    - Auto-refund on contractor rejection
    - Auto-refund on consumer cancellation
    - Cashfree refund API integration
 
 **Database Schema:**
+
 - `marketplace-payments.ts` - Already created, needs service implementation
 - `marketplace-refunds.ts` - Refund tracking table
 
 #### **Backend - Scheduler Service**
 
 **Files to Create:**
+
 1. `src/modules/marketplace/scheduler/marketplace-scheduler.module.ts`
 2. `src/modules/marketplace/scheduler/marketplace-scheduler.service.ts`
    - `@Cron('*/5 * * * *')` - SLA breach detection
@@ -340,11 +401,13 @@ service_states
 #### **Frontend - Payment Flow**
 
 **Components to Create:**
+
 1. `PaymentPage.tsx` - Cashfree payment redirect
 2. `PaymentStatusPage.tsx` - Success/failure display
 3. `RefundStatusBadge.tsx` - Refund tracking display
 
 **Integration:**
+
 - Cashfree JS SDK integration
 - Payment return URL handling
 
@@ -395,17 +458,20 @@ CRON_REFUND_CHECK=*/15 * * * *
 ### 🧪 TESTING CHECKLIST
 
 **Backend Tests:**
+
 - [ ] Start backend: `cd /Users/praharsh/Projects/user-service && pnpm start:dev`
 - [ ] Run migrations if needed: `pnpm drizzle-kit push`
 - [ ] Test GraphQL playground: `http://localhost:3001/graphql`
 
 **Frontend Tests:**
+
 - [ ] Start frontend: `cd /Users/praharsh/Projects/web-frontend && pnpm dev`
 - [ ] Test consumer marketplace flow
 - [ ] Test contractor job management
 - [ ] Test admin configuration pages
 
 **Key Flows to Test:**
+
 1. Admin creates locations, services, pricing, SLAs
 2. Consumer searches services in their area
 3. Consumer views contractor list and profiles
@@ -421,6 +487,7 @@ CRON_REFUND_CHECK=*/15 * * * *
 
 **Backend:** `/Users/praharsh/Projects/user-service/src/modules/marketplace/`
 **Frontend:** `/Users/praharsh/Projects/web-frontend/src/`
+
 - Pages: `app/(consumer|contractor|admin)/*/marketplace/`
 - Components: `components/marketplace/`
 - Hooks: `hooks/marketplace/`
@@ -433,6 +500,7 @@ CRON_REFUND_CHECK=*/15 * * * *
 ### What Was Done This Session:
 
 #### **PART 1: Database Seed Simplification**
+
 - Simplified seed to only create Super Admin from environment variables
 - Removed all test data (consumers, sites, meters, contractors)
 - Super Admin credentials now from: `SUPER_ADMIN_EMAIL`, `SUPER_ADMIN_PASSWORD`, `SUPER_ADMIN_NAME`, `SUPER_ADMIN_PHONE`
@@ -509,6 +577,7 @@ CRON_REFUND_CHECK=*/15 * * * *
 ## ✅ COMPLETED FEATURES
 
 ### Authentication & Authorization
+
 - [x] Email/Password login for Admin/Super Admin via `login` mutation
 - [x] Phone + OTP login for all roles via `requestLoginOtp`/`verifyLoginOtp`
 - [x] Super Admin can login with ADMIN loginType
@@ -516,6 +585,7 @@ CRON_REFUND_CHECK=*/15 * * * *
 - [x] Role-based access control (RBAC)
 
 ### User Management
+
 - [x] Super Admin creation from environment variables
 - [x] Admin user management
 - [x] RO (Retail Outlet) user management
@@ -523,11 +593,13 @@ CRON_REFUND_CHECK=*/15 * * * *
 - [x] Consumer management
 
 ### Hierarchy Management
+
 - [x] Circle → Division → Subdivision structure
 - [x] RO assignment to subdivisions
 - [x] Auto-create hierarchy during import if not exists
 
 ### Import System
+
 - [x] Consumer Excel import with hierarchy resolution
 - [x] Meter Excel import
 - [x] Contractor Excel import
@@ -537,12 +609,14 @@ CRON_REFUND_CHECK=*/15 * * * *
 - [x] Import logging and audit trail
 
 ### File Management
+
 - [x] Private file storage (MinIO/S3)
 - [x] Public file storage
 - [x] Signed URLs for private files
 - [x] Installation evidence uploads
 
 ### Installation Flow
+
 - [x] Site creation from consumer import
 - [x] Meter assignment to sites
 - [x] Contractor job assignment
@@ -551,6 +625,7 @@ CRON_REFUND_CHECK=*/15 * * * *
 - [x] State machine for site/meter/installation states
 
 ### Frontend
+
 - [x] Admin dashboard
 - [x] RO dashboard with consumer list
 - [x] RO verification page
@@ -563,24 +638,28 @@ CRON_REFUND_CHECK=*/15 * * * *
 ## 🔄 PENDING / TODO
 
 ### High Priority
+
 - [ ] **SMS Gateway Integration** - Currently disabled (`SMS_SERVICES_DISABLED=true`)
 - [ ] **Email Service Integration** - Currently disabled (`EMAIL_ENABLED=false`)
 - [ ] **Consumer Activation Flow** - RO "Send Link" button needs to trigger actual SMS/Email
 - [ ] **Skip Duplicates Option** - Allow import to skip existing consumers instead of failing entire batch
 
 ### Medium Priority
+
 - [ ] **Billing Module** - Full implementation (currently has stub queries)
 - [ ] **Notification System** - In-app notifications
 - [ ] **Dashboard Statistics** - Proper stats queries for all dashboards
 - [ ] **Export Functionality** - Export consumers/meters/reports to Excel
 
 ### Low Priority
+
 - [ ] **Audit Log UI** - View audit logs in admin panel
 - [ ] **Consumer Self-Service Portal** - Bill viewing, complaint registration
 - [ ] **Mobile App** - React Native app for contractors
 - [ ] **Reports & Analytics** - Detailed reports with charts
 
 ### Known Issues
+
 - [ ] Billing queries return placeholder data only
 - [ ] Some dashboard stats may show incorrect counts
 
@@ -619,15 +698,15 @@ EMAIL_ENABLED=false
 
 ## 📊 Import Behavior Summary
 
-| Aspect | Behavior |
-|--------|----------|
-| Transaction | All-or-nothing (1 failure = entire batch fails) |
-| Duplicate Consumer ID | Error with specific message |
-| Duplicate Phone | Error with specific message |
-| Same File Upload | Rejected by SHA-256 hash check |
-| Modified File | Allowed (different hash) |
-| Missing Hierarchy | Auto-created during import |
-| Hierarchy Storage | Stores IDs (circleId, divisionId, subdivisionId), not names |
+| Aspect                | Behavior                                                    |
+| --------------------- | ----------------------------------------------------------- |
+| Transaction           | All-or-nothing (1 failure = entire batch fails)             |
+| Duplicate Consumer ID | Error with specific message                                 |
+| Duplicate Phone       | Error with specific message                                 |
+| Same File Upload      | Rejected by SHA-256 hash check                              |
+| Modified File         | Allowed (different hash)                                    |
+| Missing Hierarchy     | Auto-created during import                                  |
+| Hierarchy Storage     | Stores IDs (circleId, divisionId, subdivisionId), not names |
 
 ---
 
@@ -636,7 +715,8 @@ EMAIL_ENABLED=false
 ### What Was Done:
 
 #### **PART 1: RO Verify Page - Human Readable IDs & Details**
-   - Added nested `consumer { id, consumerId, name, phone, email }`
+
+- Added nested `consumer { id, consumerId, name, phone, email }`
 
 2. **RO Verify Page Improvements:**
    - Shows Site ID (SITE-XXXX format) instead of UUID
@@ -669,11 +749,13 @@ EMAIL_ENABLED=false
 **Problem:** Site showed "VERIFICATION_PENDING" in site-review page but installation showed "VERIFIED".
 
 **Root Cause:** When verification was approved, the site state transition from current state to `VERIFIED` failed silently because:
+
 - Site was at `INSTALLED` state
 - `INSTALLED → VERIFIED` is NOT a valid transition
 - Valid path: `INSTALLED → VERIFICATION_PENDING → VERIFIED`
 
 **Fix in `verifications.service.ts`:**
+
 ```typescript
 // Before: Direct transition (failed for INSTALLED sites)
 await this.sitesService.transitionState(installation.siteId, SiteState.VERIFIED, ...);
@@ -699,27 +781,32 @@ await this.sitesService.transitionState(..., SiteState.VERIFIED, ...);
 **Problem 1:** `markInstalled` failed because it checked only `assignedConsumerId`.
 
 **Fix:** Updated `meters.service.ts` to check `assignedSiteId || assignedConsumerId`:
+
 ```typescript
 // Before
-if (meter.state !== 'ASSIGNED' || !meter.assignedConsumerId) {
-  throw new BadRequestException('Meter is not assigned to a consumer');
+if (meter.state !== "ASSIGNED" || !meter.assignedConsumerId) {
+  throw new BadRequestException("Meter is not assigned to a consumer");
 }
 
-// After  
-if (meter.state !== 'ASSIGNED' || (!meter.assignedSiteId && !meter.assignedConsumerId)) {
-  throw new BadRequestException('Meter is not assigned to a site or consumer');
+// After
+if (
+  meter.state !== "ASSIGNED" ||
+  (!meter.assignedSiteId && !meter.assignedConsumerId)
+) {
+  throw new BadRequestException("Meter is not assigned to a site or consumer");
 }
 ```
 
 **Problem 2:** Verification approval failed when meter was still `ASSIGNED`.
 
 **Fix:** Added meter state transition in verification approval:
+
 ```typescript
-if (meter.state === 'ASSIGNED') {
+if (meter.state === "ASSIGNED") {
   try {
     await this.metersService.markInstalled(meterId, initialReading, reviewerId);
   } catch (err) {
-    console.warn('Failed to mark meter as installed:', err);
+    console.warn("Failed to mark meter as installed:", err);
   }
 }
 await this.metersService.markActive(meterId, reviewerId);
@@ -801,15 +888,15 @@ BILLED
 
 ### Key Bug Fixes Summary:
 
-| Issue | Root Cause | Fix |
-|-------|-----------|-----|
-| Site stuck at VERIFICATION_PENDING | Direct INSTALLED→VERIFIED transition invalid | Added intermediate state transitions |
-| Evidence images not displaying | Storage key not converted to signed URL | Added fileUrl ResolveField |
-| Evidence upload 401 error | Wrong auth token key | Fixed to use `mescom_auth_token` |
-| Meter state error on complete | Only checked assignedConsumerId | Added assignedSiteId check |
-| Meter state error on verify | Meter still ASSIGNED when approving | Added ASSIGNED→INSTALLED transition |
-| Installation not found | No record created on meter assign | Creates installation in createConnection |
-| RO installations empty | Wrong roId (user ID vs retailOutlets.id) | Fixed lookup to use retailOutlets.id |
+| Issue                              | Root Cause                                   | Fix                                      |
+| ---------------------------------- | -------------------------------------------- | ---------------------------------------- |
+| Site stuck at VERIFICATION_PENDING | Direct INSTALLED→VERIFIED transition invalid | Added intermediate state transitions     |
+| Evidence images not displaying     | Storage key not converted to signed URL      | Added fileUrl ResolveField               |
+| Evidence upload 401 error          | Wrong auth token key                         | Fixed to use `mescom_auth_token`         |
+| Meter state error on complete      | Only checked assignedConsumerId              | Added assignedSiteId check               |
+| Meter state error on verify        | Meter still ASSIGNED when approving          | Added ASSIGNED→INSTALLED transition      |
+| Installation not found             | No record created on meter assign            | Creates installation in createConnection |
+| RO installations empty             | Wrong roId (user ID vs retailOutlets.id)     | Fixed lookup to use retailOutlets.id     |
 
 ---
 
@@ -830,11 +917,12 @@ BILLED
 ### For Existing Sites Stuck at VERIFICATION_PENDING:
 
 Run this GraphQL mutation as Admin/RO:
+
 ```graphql
 mutation {
   transitionSiteState(
-    id: "<site-uuid>", 
-    newState: VERIFIED, 
+    id: "<site-uuid>"
+    newState: VERIFIED
     reason: "Manual fix - verification was already approved"
   ) {
     success
@@ -865,6 +953,7 @@ mutation {
    - Stats cards and details modal
 
 ### Key Points:
+
 - Installation created when RO assigns meter
 - Site transitions: METER_ASSIGNED → IN_PROGRESS → INSTALLED
 - Verification transitions: INSTALLED → VERIFICATION_PENDING → VERIFIED
@@ -876,6 +965,7 @@ mutation {
 ### What Was Done This Session:
 
 #### **PART 1: Contractor Model & Authentication (Completed Earlier)**
+
 - Made contractors use phone (not email) for OTP-based login
 - Added locationUpdatedBy flag to prevent double address/location updates
 - Added contractor fields to consumer bulk import
@@ -890,7 +980,7 @@ mutation {
 1. **Database Schema Updates:**
    - Added `contractorId` field to `consumer_sites` table (FK to contractors)
    - Added `contractorAssignedAt` timestamp field
-   - Added `contractorInviteSentAt` timestamp field  
+   - Added `contractorInviteSentAt` timestamp field
    - Added index on `contractor_id` for query performance
    - Migration: `0002_absurd_stryfe.sql`
 
@@ -931,11 +1021,13 @@ mutation {
 **Flow Changes:**
 
 **OLD FLOW:**
+
 ```
 Consumer Import → Site Created → Site Verification → Meter Assigned → Contractor Assigned (during installation)
 ```
 
 **NEW FLOW:**
+
 ```
 Consumer Import (optional: contractor pre-assigned from Excel)
   ↓
@@ -953,6 +1045,7 @@ Installation
 ```
 
 **Key Benefits:**
+
 - Contractors are notified early (during initial review, not at installation)
 - Contractors can plan ahead and schedule site visits
 - Admin has full visibility of contractor assignments
@@ -999,6 +1092,7 @@ mutation SendContractorInvite($siteId: ID!) {
 ```
 
 ### Task Status (Full Session):
+
 - ✅ Contractor phone (required) + OTP login
 - ✅ Contractor email (optional)
 - ✅ Contractor licenseNumber (alphanumeric, required, unique, global)
@@ -1014,6 +1108,7 @@ mutation SendContractorInvite($siteId: ID!) {
 - ✅ **Updated site card to link to detail page (NEW)**
 
 ### Pending/Future Work:
+
 - 🟡 Location update UI indicator (show who updated: CONSUMER vs CONTRACTOR)
 - 🟡 SMS/Email gateway integration for invite sending (currently just marks as sent)
 - 🟡 Contractor dashboard to view assigned sites
@@ -1026,23 +1121,29 @@ mutation SendContractorInvite($siteId: ID!) {
 ### What Was Done This Session:
 
 #### 1. Contractor Division Fields - Backend & Frontend
+
 **Goal:** Display contractor's division in assign page, allow filtering by division
 **Changes:**
+
 - Added `divisionId` and `divisionName` fields to Contractor GraphQL type (`contractors.types.ts`)
 - Added field resolvers in `contractors.resolver.ts` to fetch division info from users table
 - Updated frontend `GET_CONTRACTORS` query to include `divisionId` and `divisionName`
 
 #### 2. Division Filter in RO Assign Page
+
 **Goal:** Filter contractors by division when assigning meter installation
 **Changes:**
+
 - Added `divisionFilter` state and `availableDivisions` memo in `/ro/assign/page.tsx`
 - Added filter dropdown in contractor selection step
 - Contractors filtered based on selected division
 - Each contractor now displays their division name badge
 
 #### 3. Network Type & RAPDRP Display in Assign Page
+
 **Goal:** Show site requirements (network type, RAPDRP) when selecting sites
 **Changes:**
+
 - Updated `GET_SITES` query to include `requiredNetworkType` and `isRapdrp` fields
 - Site list now shows:
   - RAPDRP badge (purple) if site is RAPDRP
@@ -1050,6 +1151,7 @@ mutation SendContractorInvite($siteId: ID!) {
 - Updated Site interface with `requiredNetworkType` and `isRapdrp` fields
 
 ### Files Modified This Session:
+
 ```
 Backend:
 ├── src/modules/contractors/contractors.types.ts (added divisionId, divisionName)
@@ -1068,6 +1170,7 @@ Frontend:
 ```
 
 ### Updated Task Status:
+
 - ✅ Consumer import with user account creation (Session 1)
 - ✅ Subdivision-based RO data isolation (Session 1)
 - ✅ Demo consumer creation (Rajesh Kumar, phone: 9876500001)
@@ -1084,20 +1187,24 @@ Frontend:
 ### What Was Done This Session:
 
 #### 1. Consumer Import - User Account Creation Fix
+
 **Problem:** Imported consumers couldn't login with OTP
 **Root Cause:** Import only created `consumers` record, but OTP login checks `users` table
 **Fix:**
+
 - Updated `imports.resolver.ts` to create user account with CONSUMER role before creating consumer
 - Added `UsersService` dependency to ImportsResolver
 - Updated `support.module.ts` to import UsersModule
 - Consumer record now linked to user via `userId` field
 
 #### 2. RO Data Isolation - Subdivision-Based Filtering
+
 **Problem:** RO saw 0 consumers/sites even after import
-**Root Cause:** 
+**Root Cause:**
+
 - RO filtering was based on `consumerSites.roId`, but imported sites have `roId = null`
 - Sites should be visible based on subdivision, not just explicit RO assignment
-**Fix:**
+  **Fix:**
 - Updated `consumers.service.ts`:
   - Renamed `getAccessibleRoIds()` → `getAccessContext()`
   - Now returns both `roIds` AND `subdivisionIds` for RO users
@@ -1105,22 +1212,29 @@ Frontend:
 - RO can now see all consumers whose sites are in their subdivision
 
 #### 3. Site Creation - Missing subdivisionId Fix
+
 **Problem:** Sites created via import had `subdivision_id = NULL` in database
 **Root Cause:** `sites.service.ts` `create()` method wasn't saving `subdivisionId` field
 **Fix:**
+
 - Added `subdivisionId: input.subdivisionId` to insert values in `sites.service.ts`
 
 #### 4. Seed Data - RO Subdivision Assignment
+
 **Problem:** Seeded RO had no subdivision assigned, couldn't see any data
 **Fix:**
+
 - Updated `seed.ts` to assign first subdivision to RO on creation
 - Manually updated existing database: ROs and sites now linked to "Mysuru North-1 Subdivision"
 
 #### 5. Migration Consolidation
+
 **Done:** Consolidated 3 migration files into single `0000_flowery_sharon_ventura.sql`
+
 - Includes all hierarchy fields (circleId, divisionId, subdivisionId) on consumers table
 
 ### Files Modified This Session:
+
 ```
 Backend:
 ├── src/modules/support/imports.resolver.ts (creates user account during import)
@@ -1132,15 +1246,17 @@ Backend:
 ```
 
 ### Database Changes Applied:
+
 ```sql
 -- Assign subdivision to all ROs
 UPDATE retail_outlets SET subdivision_id = (SELECT id FROM subdivisions LIMIT 1) WHERE subdivision_id IS NULL;
 
--- Assign subdivision to all sites  
+-- Assign subdivision to all sites
 UPDATE consumer_sites SET subdivision_id = (SELECT id FROM subdivisions LIMIT 1) WHERE subdivision_id IS NULL;
 ```
 
 ### Current Data State:
+
 - **ROs:** 2 (ro@mescom.gov, ro08@gmail.com) → Both assigned to "Mysuru North-1 Subdivision"
 - **Consumers:** 10+ (1 seed + imports)
 - **Sites:** 10+ (all linked to subdivision)
@@ -1153,6 +1269,7 @@ UPDATE consumer_sites SET subdivision_id = (SELECT id FROM subdivisions LIMIT 1)
 ### What Was Done That Session:
 
 #### 1. Role Hierarchy Implementation
+
 **Goal:** SUPER_ADMIN → ADMIN → RO → (Contractors, Sub-users, Consumers)
 
 - Added `SUPER_ADMIN` and `SUB_USER` roles to `userRoleEnum`
@@ -1165,6 +1282,7 @@ UPDATE consumer_sites SET subdivision_id = (SELECT id FROM subdivisions LIMIT 1)
 - Created role creation permission matrix in `UsersService`
 
 #### 2. Consumer OTP-Based Login
+
 **Goal:** Consumers login via Phone + OTP (not email/password)
 
 - Added `requestOtp` mutation - sends OTP to phone (dummy: 123456)
@@ -1175,6 +1293,7 @@ UPDATE consumer_sites SET subdivision_id = (SELECT id FROM subdivisions LIMIT 1)
 - Added `loginWithToken` method to AuthProvider
 
 #### 3. Meter Assignment Validation Updates
+
 **Goal:** Add network type and RAPDRP validation
 
 - Added `required_network_type` and `is_rapdrp` to `consumer_sites` table
@@ -1184,6 +1303,7 @@ UPDATE consumer_sites SET subdivision_id = (SELECT id FROM subdivisions LIMIT 1)
   3. RAPDRP status matching (new)
 
 #### 4. Contractor Management by RO
+
 **Goal:** RO creates and manages contractors
 
 - Created `/ro/contractors` page for contractor management
@@ -1192,12 +1312,14 @@ UPDATE consumer_sites SET subdivision_id = (SELECT id FROM subdivisions LIMIT 1)
 - Added `contractorsByDivision` query for filtering
 
 #### 5. Contractor Pickup Removal
+
 **Goal:** Skip pickup step - direct to installation
 
 - Removed "Pickup" link from contractor navigation
 - Contractor flow now: Job Assigned → Start Installation → Complete
 
 #### 6. RO Verify Page Improvements
+
 - Added success message after approve/reject
 - Returns to list view (not dashboard) after verification
 - Added toggle between "Pending" and "Verified" installations list
@@ -1205,6 +1327,7 @@ UPDATE consumer_sites SET subdivision_id = (SELECT id FROM subdivisions LIMIT 1)
 - Hides approve/reject buttons for already verified installations
 
 ### Files Modified This Session:
+
 ```
 Backend:
 ├── src/common/enums/index.ts (added SUPER_ADMIN, SUB_USER)
@@ -1232,6 +1355,7 @@ Frontend:
 ```
 
 ### What's Still Pending:
+
 1. **Additional site validation fields** - Consider adding more validation for meter-site compatibility
 2. **Enhanced contractor filtering** - Add filters by license expiry, active jobs count
 3. **Bulk meter assignment** - Assign multiple meters to sites in one operation
@@ -1242,6 +1366,7 @@ Frontend:
 ## ✅ Completed Features (Updated 29 Jan)
 
 ### Core Modules
+
 - [x] Consumer Management (CRUD, state machine)
 - [x] Site Management (lifecycle: CREATED → VERIFIED → BILLED)
 - [x] Meter Registry & Inventory
@@ -1257,38 +1382,45 @@ Frontend:
 ### Recently Implemented
 
 #### 1. Circle/Division/Subdivision Hierarchy
+
 - New tables: `circles`, `divisions`, `subdivisions`
 - ROs and Sites linked to subdivisions
 - Full GraphQL API with nested queries
 - Seeded with MESCOM circles (MYS, BGM, MNG, DVG, SHP)
 
 #### 2. Notification Service
+
 - `sendWelcomeMessage` mutation
 - `sendAppointmentNotification` mutation
 - `sendInstallationCompleteNotification` mutation
 - Dev mode logging (ready for SMS gateway)
 
 #### 3. Meter Reservation Timeout
+
 - Hourly cron job releases expired reservations
 - Uses `@nestjs/schedule`
 
 #### 4. Site Verification Enhancements
+
 - Network provider field (AIRTEL/JIO/BSNL/VODAFONE/NONE)
 - Electrical readiness checkbox
 - Site accessibility notes
 - Appointment scheduling
 
 #### 5. Installation Evidence
+
 - Photo upload tracking
 - Initial meter reading storage
 - Seal/LED verification fields
 
 #### 6. Billing Export Module
+
 - Generate billing exports for verified sites
 - Handoff to external billing system
 - Confirmation workflow
 
 #### 7. Excel Upload
+
 - Consumer bulk import (`importConsumers`)
 - Meter bulk import (`importMeters`)
 - Validation and error reporting
@@ -1297,17 +1429,17 @@ Frontend:
 
 ## 🔧 Pending Work
 
-| Priority | Feature | Notes |
-|----------|---------|-------|
-| 🔴 High | **Consumer Welcome Link** | Send link with welcome chat status before initial review |
-| 🔴 High | **Division Filter in Assign** | Filter contractors by division when assigning jobs |
-| 🔴 High | **File Storage Service** | Needed for photo uploads (S3/local) |
-| 🟡 Medium | **SMS Gateway Integration** | Placeholder ready for MSG91/Twilio |
-| 🟡 Medium | **Email Gateway Integration** | Placeholder ready for SendGrid/SES |
-| 🟡 Medium | **Network Type UI in Assign** | Site requirement selection for network type/RAPDRP |
-| 🟡 Medium | **Super Admin Dashboard** | UI for creating admins |
-| 🟢 Low | **OCR for Meter Reading** | Deferred per user request |
-| 🟢 Low | **QR Scanner Backend** | Frontend component exists |
+| Priority  | Feature                       | Notes                                                    |
+| --------- | ----------------------------- | -------------------------------------------------------- |
+| 🔴 High   | **Consumer Welcome Link**     | Send link with welcome chat status before initial review |
+| 🔴 High   | **Division Filter in Assign** | Filter contractors by division when assigning jobs       |
+| 🔴 High   | **File Storage Service**      | Needed for photo uploads (S3/local)                      |
+| 🟡 Medium | **SMS Gateway Integration**   | Placeholder ready for MSG91/Twilio                       |
+| 🟡 Medium | **Email Gateway Integration** | Placeholder ready for SendGrid/SES                       |
+| 🟡 Medium | **Network Type UI in Assign** | Site requirement selection for network type/RAPDRP       |
+| 🟡 Medium | **Super Admin Dashboard**     | UI for creating admins                                   |
+| 🟢 Low    | **OCR for Meter Reading**     | Deferred per user request                                |
+| 🟢 Low    | **QR Scanner Backend**        | Frontend component exists                                |
 
 ---
 
@@ -1342,20 +1474,22 @@ mescom-backend/src/
 
 ## 🧪 Test Credentials
 
-| Role | Email/Phone | Password/OTP |
-|------|-------------|--------------|
-| Super Admin | superadmin@mescom.gov | admin123 |
-| Admin | admin@mescom.gov | admin123 |
-| RO | ro@mescom.gov | retail123 |
-| Contractor | contractor@example.com | contractor123 |
-| Consumer | (any phone number) | OTP: **123456** (dummy) |
+| Role        | Email/Phone            | Password/OTP            |
+| ----------- | ---------------------- | ----------------------- |
+| Super Admin | superadmin@mescom.gov  | admin123                |
+| Admin       | admin@mescom.gov       | admin123                |
+| RO          | ro@mescom.gov          | retail123               |
+| Contractor  | contractor@example.com | contractor123           |
+| Consumer    | (any phone number)     | OTP: **123456** (dummy) |
 
 ### Imported Consumer Phones (can login with OTP 123456):
+
 - **Demo Consumer:** Phone `9876500001` (Rajesh Kumar) - Consumer ID: CONS-DEMO-001
 - Check database for other imported consumer phone numbers
 - All imported consumers have user accounts created for OTP login
 
 ### To Create Demo Site (if not exists):
+
 ```bash
 cd mescom-backend
 psql postgres://praharsh@localhost:5432/mescom_new -f scripts/create-demo-site.sql
@@ -1383,6 +1517,7 @@ npm run dev
 ## 🗄️ Database Setup & Migration Guide
 
 ### Prerequisites
+
 - PostgreSQL 17 installed
 - Node.js 18+ and npm
 
@@ -1412,12 +1547,14 @@ npx tsx src/database/seeders/seed.ts
 ### Running Migrations
 
 Migrations are SQL files in `mescom-backend/src/database/migrations/`:
+
 - `0001_create_tables.sql` - Initial tables
 - `0002_add_requirement_fields.sql` - Meter requirements
 - `0003_add_hierarchy_tables.sql` - Circles/Divisions/Subdivisions
 - `0003_add_role_hierarchy_and_otp.sql` - Role hierarchy & OTP
 
 **To run a migration manually:**
+
 ```bash
 # Option 1: Using psql directly
 psql -U USERNAME -d mescom -f src/database/migrations/MIGRATION_FILE.sql
@@ -1445,10 +1582,11 @@ npx drizzle-kit push
    npx tsx src/database/seeders/seed.ts
    ```
 5. **Start servers:**
+
    ```bash
    # Terminal 1
    cd mescom-backend && npm run start:dev
-   
+
    # Terminal 2
    cd Mescom && npm run dev
    ```
@@ -1456,13 +1594,14 @@ npx drizzle-kit push
 ### Connection String
 
 Update `mescom-backend/drizzle.config.ts`:
+
 ```typescript
 export default defineConfig({
-  schema: './src/database/schema/index.ts',
-  out: './drizzle',
-  dialect: 'postgresql',
+  schema: "./src/database/schema/index.ts",
+  out: "./drizzle",
+  dialect: "postgresql",
   dbCredentials: {
-    url: 'postgres://YOUR_USERNAME@localhost:5432/mescom',
+    url: "postgres://YOUR_USERNAME@localhost:5432/mescom",
   },
 });
 ```
@@ -1481,26 +1620,32 @@ SUPER_ADMIN
 ```
 
 ### Role Permissions:
-| Role | Can Create | Uses |
-|------|------------|------|
-| SUPER_ADMIN | ADMIN | Email + Password |
-| ADMIN | RETAIL_OUTLET | Email + Password |
+
+| Role          | Can Create                     | Uses             |
+| ------------- | ------------------------------ | ---------------- |
+| SUPER_ADMIN   | ADMIN                          | Email + Password |
+| ADMIN         | RETAIL_OUTLET                  | Email + Password |
 | RETAIL_OUTLET | CONTRACTOR, SUB_USER, CONSUMER | Email + Password |
-| CONTRACTOR | - | Email + Password |
-| SUB_USER | - | Email + Password |
-| CONSUMER | - | Phone + OTP |
+| CONTRACTOR    | -                              | Email + Password |
+| SUB_USER      | -                              | Email + Password |
+| CONSUMER      | -                              | Phone + OTP      |
 
 ---
 
 ## 🔄 GraphQL Queries Reference
 
 ### Authentication
+
 ```graphql
 # Login with email/password
 mutation {
   login(input: { email: "admin@mescom.gov", password: "admin123" }) {
     token
-    user { id name role }
+    user {
+      id
+      name
+      role
+    }
   }
 }
 
@@ -1515,36 +1660,49 @@ mutation {
 mutation {
   verifyOtp(input: { phone: "9876543210", otp: "123456" }) {
     token
-    user { id name role }
+    user {
+      id
+      name
+      role
+    }
   }
 }
 ```
 
 ### User Creation (Role-based)
+
 ```graphql
 # Create Contractor (RO only)
 mutation {
-  createContractor(input: {
-    name: "John Doe"
-    email: "john@company.com"
-    password: "password123"
-    phone: "9876543210"
-    company: "ABC Electric"
-    licenseNumber: "LIC-2024-001"
-  }) {
-    id name role
+  createContractor(
+    input: {
+      name: "John Doe"
+      email: "john@company.com"
+      password: "password123"
+      phone: "9876543210"
+      company: "ABC Electric"
+      licenseNumber: "LIC-2024-001"
+    }
+  ) {
+    id
+    name
+    role
   }
 }
 
 # Create Consumer (RO only)
 mutation {
-  createConsumer(input: {
-    name: "Consumer Name"
-    phone: "9876543210"
-    rrNumber: "RR123456"
-    address: "123 Main St"
-  }) {
-    id name role
+  createConsumer(
+    input: {
+      name: "Consumer Name"
+      phone: "9876543210"
+      rrNumber: "RR123456"
+      address: "123 Main St"
+    }
+  ) {
+    id
+    name
+    role
   }
 }
 ```
@@ -1554,18 +1712,22 @@ mutation {
 ## 📝 Known Issues & Fixes
 
 ### Issue: Duplicate enum registration error
+
 **Error:** `Enum "MeterNetworkType" was already registered`
 **Fix:** Import from existing module instead of redefining:
+
 ```typescript
 // In sites.types.ts
-import { MeterNetworkType } from '../meter-specs/meter-specs.types';
+import { MeterNetworkType } from "../meter-specs/meter-specs.types";
 // NOT: export enum MeterNetworkType { ... }
 ```
 
 ### Issue: Email required but consumers use OTP
+
 **Fix:** Made `email` and `password_hash` nullable in users table (migration 0003)
 
 ### Issue: Verify page not showing success state
+
 **Fix:** Added success message state and proper navigation back to list
 
 ---
@@ -1574,20 +1736,20 @@ import { MeterNetworkType } from '../meter-specs/meter-specs.types';
 
 ### ✅ Core Features - COMPLETED
 
-| Module | Status | Notes |
-|--------|--------|-------|
-| Consumer Management | ✅ | CRUD, state machine, OTP login |
-| Site Management | ✅ | Full lifecycle (CREATED → BILLED) |
-| Meter Registry | ✅ | Inventory, specs, QR scanning |
-| Site-Meter Connections | ✅ | Domain entity with history |
-| Installations | ✅ | Contractor job flow |
-| Verifications | ✅ | RO approval workflow |
-| Audit Logging | ✅ | All state changes tracked |
-| Circle/Division/Subdivision Hierarchy | ✅ | Full API |
-| Consumer Import with User Account | ✅ | OTP login works |
-| RO Data Isolation (Subdivision) | ✅ | Fixed 29 Jan |
-| Division filter in assign page | ✅ | Added 29 Jan |
-| Network type & RAPDRP display | ✅ | Added 29 Jan |
+| Module                                | Status | Notes                             |
+| ------------------------------------- | ------ | --------------------------------- |
+| Consumer Management                   | ✅     | CRUD, state machine, OTP login    |
+| Site Management                       | ✅     | Full lifecycle (CREATED → BILLED) |
+| Meter Registry                        | ✅     | Inventory, specs, QR scanning     |
+| Site-Meter Connections                | ✅     | Domain entity with history        |
+| Installations                         | ✅     | Contractor job flow               |
+| Verifications                         | ✅     | RO approval workflow              |
+| Audit Logging                         | ✅     | All state changes tracked         |
+| Circle/Division/Subdivision Hierarchy | ✅     | Full API                          |
+| Consumer Import with User Account     | ✅     | OTP login works                   |
+| RO Data Isolation (Subdivision)       | ✅     | Fixed 29 Jan                      |
+| Division filter in assign page        | ✅     | Added 29 Jan                      |
+| Network type & RAPDRP display         | ✅     | Added 29 Jan                      |
 
 ### ⚠️ Pending Items - Prioritized
 
@@ -1647,12 +1809,12 @@ import { MeterNetworkType } from '../meter-specs/meter-specs.types';
 
 ### 🔧 Technical Debt
 
-| Issue | Location | Priority |
-|-------|----------|----------|
-| `<img>` instead of Next.js `<Image>` | Multiple pages | Low |
-| useMemo dependency warnings | assign/page.tsx | Low |
-| Pickup folder exists but feature removed | contractor/pickup | Low |
-| Dev-mode notification logging | notification module | Medium |
+| Issue                                    | Location            | Priority |
+| ---------------------------------------- | ------------------- | -------- |
+| `<img>` instead of Next.js `<Image>`     | Multiple pages      | Low      |
+| useMemo dependency warnings              | assign/page.tsx     | Low      |
+| Pickup folder exists but feature removed | contractor/pickup   | Low      |
+| Dev-mode notification logging            | notification module | Medium   |
 
 ### 📋 Recommended Next Steps
 
@@ -1660,4 +1822,3 @@ import { MeterNetworkType } from '../meter-specs/meter-specs.types';
 2. **Remove or hide contractor pickup page** if the flow skips it
 3. **Add real SMS integration** for production (replace console.log)
 4. **Run the app on mobile** to identify responsive design issues
-

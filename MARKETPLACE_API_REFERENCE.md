@@ -1,6 +1,7 @@
 # Marketplace API Reference
 
-> Complete API documentation for Consumer and Contractor marketplace integration.
+> Complete API documentation matching the implemented backend schema.
+> **Last Updated:** 24 February 2026
 
 ---
 
@@ -12,7 +13,11 @@
 - [Contractor APIs](#contractor-apis)
   - [Queries](#contractor-queries)
   - [Mutations](#contractor-mutations)
+- [Admin APIs](#admin-apis)
+  - [Queries](#admin-queries)
+  - [Mutations](#admin-mutations)
 - [Shared APIs](#shared-apis)
+- [Types](#types)
 - [Input Types](#input-types)
 - [Enums](#enums)
 - [Flow Diagrams](#flow-diagrams)
@@ -24,6 +29,7 @@
 ### Consumer Queries
 
 #### `myMarketplaceJobs`
+
 Get all jobs for the current logged-in consumer.
 
 ```graphql
@@ -34,15 +40,38 @@ query MyMarketplaceJobs($filters: JobsFilterInput) {
       jobNumber
       status
       serviceName
+      serviceId
+      contractorId
       contractorName
-      totalAmount
+      contractorPhone
+      consumerId
+      consumerName
+      consumerPhone
+      consumerAddress
+      locationId
+      locationName
+      priceSnapshot
+      areaTypeSnapshot
+      acceptanceDeadline
+      startDeadline
+      completionDeadline
       createdAt
+      paidAt
+      acceptedAt
+      startedAt
+      completedAt
+      closedAt
+      rejectedAt
+      rejectionReason
+      updatedAt
     }
     pagination {
       total
       page
       limit
       totalPages
+      hasNext
+      hasPrev
     }
   }
 }
@@ -52,33 +81,71 @@ query MyMarketplaceJobs($filters: JobsFilterInput) {
 
 ---
 
+#### `activeJobOtp`
+
+Get the active (unexpired, unused) OTP for a job. Used by consumers to see the verification code in their UI instead of relying on SMS.
+
+```graphql
+query ActiveJobOtp($jobId: ID!) {
+  activeJobOtp(jobId: $jobId) {
+    id
+    jobId
+    otpType
+    code
+    expiresAt
+    isUsed
+    usedAt
+    createdAt
+  }
+}
+```
+
+**Roles:** `CONSUMER`
+
+**Returns:** `JobOtp` or `null` if no active OTP exists.
+
+**Notes:**
+
+- Consumer must own the job (ownership validated server-side)
+- Returns the latest unexpired, unused OTP
+- Frontend should poll this query when job is in `ACCEPTED` or `STARTED` status
+- Code is a 6-digit string
+- OTP expires after 15 minutes
+
+---
+
 #### `searchMarketplaceContractors`
+
 Search for contractors by location and service.
 
 ```graphql
 query SearchContractors($input: ContractorSearchInput!) {
   searchMarketplaceContractors(input: $input) {
     items {
-      id
       contractorId
       contractorName
+      companyName
       phone
-      averageRating
-      totalCompletedJobs
-      subscriptionType
-      price
-      currency
+      ratingAvg
+      totalRatings
+      totalJobsCompleted
+      isPremiumContractor
+      priceForService
     }
     pagination {
       total
       page
       limit
+      totalPages
+      hasNext
+      hasPrev
     }
   }
 }
 ```
 
 **Variables:**
+
 ```json
 {
   "input": {
@@ -98,6 +165,7 @@ query SearchContractors($input: ContractorSearchInput!) {
 ---
 
 #### `marketplaceServicesWithPrices`
+
 Get all services with current prices for a specific area type.
 
 ```graphql
@@ -106,10 +174,19 @@ query ServicesWithPrices($areaType: MarketplaceAreaType!) {
     id
     name
     description
-    categoryName
-    uomName
-    price
-    currency
+    category {
+      id
+      name
+      code
+    }
+    uom {
+      id
+      name
+      code
+      requiresQuantity
+    }
+    currentPrice
+    isFreeAvailable
   }
 }
 ```
@@ -119,118 +196,40 @@ query ServicesWithPrices($areaType: MarketplaceAreaType!) {
 ---
 
 #### `marketplaceServicesByCategory`
-Get services grouped by category.
+
+Get services grouped by category with prices for an area type.
 
 ```graphql
-query ServicesByCategory($areaType: MarketplaceAreaType) {
+query ServicesByCategory($areaType: MarketplaceAreaType!) {
   marketplaceServicesByCategory(areaType: $areaType) {
-    categoryId
-    categoryName
-    categoryCode
+    category {
+      id
+      name
+      code
+    }
     services {
       id
       name
       description
-      price
-      uomName
+      currentPrice
+      isFreeAvailable
+      category {
+        id
+        name
+        code
+      }
+      uom {
+        id
+        name
+        code
+        requiresQuantity
+      }
     }
   }
 }
 ```
 
 **Roles:** `CONSUMER`, `CONTRACTOR`
-
----
-
-#### `marketplaceContractorProfile`
-Get a contractor's marketplace profile.
-
-```graphql
-query ContractorProfile($contractorId: ID!) {
-  marketplaceContractorProfile(contractorId: $contractorId) {
-    id
-    contractorId
-    contractorName
-    phone
-    email
-    subscriptionType
-    averageRating
-    totalCompletedJobs
-    totalReviews
-    isAvailable
-    createdAt
-  }
-}
-```
-
-**Roles:** `CONSUMER`, `CONTRACTOR`, `ADMIN`
-
----
-
-#### `marketplaceContractorLocations`
-Get locations a contractor serves.
-
-```graphql
-query ContractorLocations($contractorId: ID!) {
-  marketplaceContractorLocations(contractorId: $contractorId) {
-    id
-    locationId
-    stateName
-    districtName
-    subDistrictName
-    villageName
-    areaType
-  }
-}
-```
-
-**Roles:** `CONSUMER`, `CONTRACTOR`, `ADMIN`
-
----
-
-#### `marketplaceContractorServices`
-Get services a contractor offers.
-
-```graphql
-query ContractorServices($contractorId: ID!) {
-  marketplaceContractorServices(contractorId: $contractorId) {
-    id
-    serviceId
-    serviceName
-    categoryName
-    uomName
-  }
-}
-```
-
-**Roles:** `CONSUMER`, `CONTRACTOR`, `ADMIN`
-
----
-
-#### `marketplaceContractorReviews`
-Get reviews for a contractor.
-
-```graphql
-query ContractorReviews($contractorId: ID!, $page: Int, $limit: Int) {
-  marketplaceContractorReviews(contractorId: $contractorId, page: $page, limit: $limit) {
-    items {
-      id
-      jobNumber
-      rating
-      comment
-      raterName
-      createdAt
-    }
-    pagination {
-      total
-      page
-      limit
-    }
-  }
-}
-```
-
-**Roles:** `CONSUMER`, `CONTRACTOR`, `ADMIN`
 
 ---
 
@@ -261,9 +260,12 @@ query SubDistricts($districtCode: String!) {
   }
 }
 
-# Get villages for a sub-district (only classified ones)
-query Villages($subDistrictCode: String!) {
-  marketplaceVillages(subDistrictCode: $subDistrictCode) {
+# Get villages (only classified ones with area type)
+query Villages($districtCode: String!, $subDistrictCode: String) {
+  marketplaceVillages(
+    districtCode: $districtCode
+    subDistrictCode: $subDistrictCode
+  ) {
     id
     villageCode
     villageName
@@ -280,8 +282,8 @@ query Villages($subDistrictCode: String!) {
 
 ```graphql
 # Get all categories
-query Categories {
-  serviceCategories {
+query Categories($activeOnly: Boolean) {
+  serviceCategories(activeOnly: $activeOnly) {
     id
     name
     code
@@ -289,25 +291,33 @@ query Categories {
     icon
     isFreeAvailable
     displayOrder
+    isActive
+    createdAt
+    updatedAt
   }
 }
 
 # Get categories available to FREE contractors
 query FreeCategories {
-  serviceCategoriesFreeAvailable {
+  freeAvailableCategories {
     id
     name
     code
+    isFreeAvailable
+    isActive
   }
 }
 
 # Get all UOMs
-query UOMs {
-  serviceUoms {
+query UOMs($activeOnly: Boolean) {
+  serviceUoms(activeOnly: $activeOnly) {
     id
     name
     code
     description
+    requiresQuantity
+    displayOrder
+    isActive
   }
 }
 ```
@@ -319,31 +329,25 @@ query UOMs {
 ### Consumer Mutations
 
 #### `createMarketplaceJob`
+
 Create a new marketplace job (initiates payment flow).
 
 ```graphql
 mutation CreateJob($input: CreateJobInput!) {
   createMarketplaceJob(input: $input) {
-    success
-    message
-    job {
-      id
-      jobNumber
-      status
-      totalAmount
-      currency
-    }
-    paymentSession {
-      paymentId
-      sessionId
-      paymentLink
-      amount
-    }
+    jobId
+    jobNumber
+    amount
+    paymentSessionId
+    paymentUrl
   }
 }
 ```
 
+**Returns:** `CreateJobResult`
+
 **Variables:**
+
 ```json
 {
   "input": {
@@ -360,35 +364,50 @@ mutation CreateJob($input: CreateJobInput!) {
 **Roles:** `CONSUMER`
 
 **Notes:**
-- Returns a payment session for redirect to payment gateway
-- Job status starts as `PAYMENT_PENDING`
-- After payment success, status changes to `REQUESTED`
+
+- Job starts as `PAYMENT_PENDING`
+- `paymentSessionId` and `paymentUrl` are placeholders until Cashfree is integrated
+- `quantity` defaults to 1; use for UOMs with `requiresQuantity: true`
+- `amount` = `unitPrice × quantity` (calculated server-side)
+
+---
+
+#### `simulatePaymentSuccess` (DEV ONLY)
+
+Simulate payment gateway success. Will be replaced by Cashfree webhook.
+
+```graphql
+mutation SimulatePayment($jobId: ID!) {
+  simulatePaymentSuccess(jobId: $jobId) {
+    id
+    jobNumber
+    status
+    paidAt
+  }
+}
+```
+
+**Roles:** Any authenticated user (DEV ONLY)
 
 ---
 
 #### `cancelMarketplaceJob`
+
 Cancel a job (before contractor starts).
 
 ```graphql
 mutation CancelJob($input: CancelJobInput!) {
   cancelMarketplaceJob(input: $input) {
-    success
-    message
-    job {
-      id
-      jobNumber
-      status
-    }
-    refund {
-      id
-      amount
-      status
-    }
+    id
+    jobNumber
+    status
+    rejectionReason
   }
 }
 ```
 
 **Variables:**
+
 ```json
 {
   "input": {
@@ -401,33 +420,14 @@ mutation CancelJob($input: CancelJobInput!) {
 **Roles:** `CONSUMER`
 
 **Rules:**
-- Can only cancel jobs in `REQUESTED` or `ACCEPTED` status
+
+- Can only cancel jobs in `PAYMENT_PENDING` or `REQUESTED` status
 - Cannot cancel once job is `STARTED`
-- Triggers automatic refund
-
----
-
-#### `initiateMarketplacePayment`
-Retry/initiate payment for a pending job.
-
-```graphql
-mutation InitiatePayment($jobId: ID!) {
-  initiateMarketplacePayment(jobId: $jobId) {
-    paymentId
-    sessionId
-    paymentLink
-    amount
-    currency
-    expiresAt
-  }
-}
-```
-
-**Roles:** `CONSUMER`
 
 ---
 
 #### `createMarketplaceRating`
+
 Rate a contractor after job completion.
 
 ```graphql
@@ -435,6 +435,8 @@ mutation RateJob($input: CreateRatingInput!) {
   createMarketplaceRating(input: $input) {
     id
     jobId
+    raterUserId
+    rateeUserId
     rating
     comment
     createdAt
@@ -443,6 +445,7 @@ mutation RateJob($input: CreateRatingInput!) {
 ```
 
 **Variables:**
+
 ```json
 {
   "input": {
@@ -456,10 +459,12 @@ mutation RateJob($input: CreateRatingInput!) {
 **Roles:** `CONSUMER`, `CONTRACTOR`
 
 **Rules:**
+
 - Job must be in `COMPLETED` status
 - Each party can rate once per job
 - Rating is 1-5 stars
 - Comment is optional (max 500 chars)
+- After consumer rates, job moves to `CLOSED`
 
 ---
 
@@ -468,6 +473,7 @@ mutation RateJob($input: CreateRatingInput!) {
 ### Contractor Queries
 
 #### `myContractorMarketplaceJobs`
+
 Get all jobs assigned to the current contractor.
 
 ```graphql
@@ -478,20 +484,35 @@ query MyContractorJobs($filters: JobsFilterInput) {
       jobNumber
       status
       serviceName
+      serviceId
+      consumerId
       consumerName
       consumerPhone
       consumerAddress
-      totalAmount
+      contractorId
+      contractorName
+      locationId
       locationName
+      priceSnapshot
+      areaTypeSnapshot
       acceptanceDeadline
+      startDeadline
       completionDeadline
       createdAt
+      paidAt
+      acceptedAt
+      startedAt
+      completedAt
+      closedAt
+      updatedAt
     }
     pagination {
       total
       page
       limit
       totalPages
+      hasNext
+      hasPrev
     }
   }
 }
@@ -501,9 +522,73 @@ query MyContractorJobs($filters: JobsFilterInput) {
 
 ---
 
+#### `mySubscriptionStatus`
+
+Get the current subscription status for the logged-in contractor.
+
+```graphql
+query MySubscriptionStatus {
+  mySubscriptionStatus {
+    contractorId
+    currentType
+    validTill
+    isExpired
+    daysRemaining
+  }
+}
+```
+
+**Roles:** `CONTRACTOR`
+
+---
+
+#### `mySubscriptionHistory`
+
+Get the subscription history for the logged-in contractor.
+
+```graphql
+query MySubscriptionHistory {
+  mySubscriptionHistory {
+    id
+    contractorId
+    subscriptionType
+    startDate
+    endDate
+    paymentId
+    createdAt
+  }
+}
+```
+
+**Roles:** `CONTRACTOR`
+
+---
+
+#### `subscriptionPlans`
+
+Get available subscription plans.
+
+```graphql
+query SubscriptionPlans {
+  subscriptionPlans {
+    duration
+    durationMonths
+    price
+    discountPercent
+    finalPrice
+    description
+  }
+}
+```
+
+**Roles:** Any authenticated user
+
+---
+
 ### Contractor Mutations
 
 #### `acceptMarketplaceJob`
+
 Accept an incoming job request.
 
 ```graphql
@@ -513,13 +598,14 @@ mutation AcceptJob($input: AcceptJobInput!) {
     jobNumber
     status
     acceptedAt
-    jobStartDeadline
+    startDeadline
     completionDeadline
   }
 }
 ```
 
 **Variables:**
+
 ```json
 {
   "input": {
@@ -531,13 +617,15 @@ mutation AcceptJob($input: AcceptJobInput!) {
 **Roles:** `CONTRACTOR`
 
 **Rules:**
+
 - Job must be in `REQUESTED` status
 - Job must be assigned to this contractor
-- Sets SLA deadlines after acceptance
+- Sets SLA start deadline after acceptance
 
 ---
 
 #### `rejectMarketplaceJob`
+
 Reject an incoming job request.
 
 ```graphql
@@ -553,6 +641,7 @@ mutation RejectJob($input: RejectJobInput!) {
 ```
 
 **Variables:**
+
 ```json
 {
   "input": {
@@ -565,6 +654,7 @@ mutation RejectJob($input: RejectJobInput!) {
 **Roles:** `CONTRACTOR`
 
 **Rules:**
+
 - Job must be in `REQUESTED` status
 - Reason is required
 - Triggers automatic refund to consumer
@@ -572,20 +662,25 @@ mutation RejectJob($input: RejectJobInput!) {
 ---
 
 #### `generateMarketplaceOtp`
-Generate OTP for job start or completion.
+
+Generate OTP for job start or completion. The 6-digit code is returned in the response and also sent to the consumer via SMS. Consumer can also see the code via the `activeJobOtp` query.
 
 ```graphql
 mutation GenerateOTP($input: GenerateOtpInput!) {
   generateMarketplaceOtp(input: $input) {
+    id
     jobId
     otpType
+    code
     expiresAt
-    message
+    isUsed
+    createdAt
   }
 }
 ```
 
 **Variables:**
+
 ```json
 {
   "input": {
@@ -598,17 +693,21 @@ mutation GenerateOTP($input: GenerateOtpInput!) {
 **Roles:** `CONTRACTOR`
 
 **OTP Types:**
-- `START_JOB` - Generate when arriving at location
-- `COMPLETE_JOB` - Generate when work is done
+
+- `START_JOB` — Generate when arriving at consumer's location (job must be `ACCEPTED`)
+- `COMPLETE_JOB` — Generate when work is done (job must be `STARTED`)
 
 **Notes:**
-- OTP is sent to consumer's phone via SMS
-- OTP expires in 10 minutes
-- Consumer must share OTP with contractor
+
+- OTP is a 6-digit code, valid for 15 minutes
+- Consumer sees OTP in their UI via `activeJobOtp` query
+- OTP is also sent via SMS to consumer's phone
+- Max 3 verification attempts per OTP
 
 ---
 
 #### `verifyMarketplaceOtp`
+
 Verify OTP to start or complete job.
 
 ```graphql
@@ -624,6 +723,7 @@ mutation VerifyOTP($input: VerifyMarketplaceOtpInput!) {
 ```
 
 **Variables:**
+
 ```json
 {
   "input": {
@@ -636,16 +736,200 @@ mutation VerifyOTP($input: VerifyMarketplaceOtpInput!) {
 **Roles:** `CONTRACTOR`
 
 **Rules:**
-- For START_JOB: Job must be in `ACCEPTED` status → becomes `STARTED`
-- For COMPLETE_JOB: Job must be in `STARTED` status → becomes `COMPLETED`
+
+- For `START_JOB`: Job must be in `ACCEPTED` status → becomes `STARTED`
+- For `COMPLETE_JOB`: Job must be in `STARTED` status → becomes `COMPLETED`
+- Max 3 attempts per OTP; after that, generate a new one
+
+---
+
+#### `initiateSubscriptionUpgrade`
+
+Initiate subscription upgrade to PREMIUM.
+
+```graphql
+mutation InitiateUpgrade($input: InitiateSubscriptionUpgradeInput!) {
+  initiateSubscriptionUpgrade(input: $input) {
+    paymentIntentId
+    plan {
+      duration
+      durationMonths
+      price
+      discountPercent
+      finalPrice
+      description
+    }
+    paymentUrl
+    expiresAt
+  }
+}
+```
+
+**Variables:**
+
+```json
+{
+  "input": {
+    "contractorId": "contractor-uuid",
+    "duration": "MONTHLY"
+  }
+}
+```
+
+**Roles:** `CONTRACTOR`
+
+---
+
+#### `confirmSubscriptionPayment`
+
+Confirm subscription payment after payment gateway callback.
+
+```graphql
+mutation ConfirmPayment($input: ConfirmSubscriptionPaymentInput!) {
+  confirmSubscriptionPayment(input: $input) {
+    success
+    message
+    subscription {
+      id
+      contractorId
+      subscriptionType
+      startDate
+      endDate
+    }
+  }
+}
+```
+
+**Roles:** `CONTRACTOR`
+
+---
+
+## Admin APIs
+
+### Admin Queries
+
+#### `marketplaceJobs`
+
+Get all jobs with filters.
+
+```graphql
+query AllJobs($filters: JobsFilterInput) {
+  marketplaceJobs(filters: $filters) {
+    items {
+      ...MarketplaceJobFields
+    }
+    pagination {
+      total
+      page
+      limit
+      totalPages
+      hasNext
+      hasPrev
+    }
+  }
+}
+```
+
+**Roles:** `ADMIN`, `SUPER_ADMIN`
+
+---
+
+#### `marketplaceSlaBreaches`
+
+Get SLA breaches with filters.
+
+```graphql
+query SlaBreaches($filters: SlaBreachFilterInput) {
+  marketplaceSlaBreaches(filters: $filters) {
+    items {
+      id
+      jobId
+      jobNumber
+      breachType
+      deadline
+      breachedAt
+      createdAt
+    }
+    pagination {
+      total
+      page
+      limit
+      totalPages
+      hasNext
+      hasPrev
+    }
+  }
+}
+```
+
+**Roles:** `ADMIN`, `SUPER_ADMIN`
+
+---
+
+#### `contractorSubscriptionStatus` / `contractorSubscriptionHistory`
+
+Admin queries for checking any contractor's subscription.
+
+```graphql
+query ContractorSubStatus($contractorId: ID!) {
+  contractorSubscriptionStatus(contractorId: $contractorId) {
+    contractorId
+    currentType
+    validTill
+    isExpired
+    daysRemaining
+  }
+}
+
+query ContractorSubHistory($contractorId: ID!) {
+  contractorSubscriptionHistory(contractorId: $contractorId) {
+    id
+    contractorId
+    subscriptionType
+    startDate
+    endDate
+    paymentId
+    createdAt
+  }
+}
+```
+
+**Roles:** `ADMIN`, `SUPER_ADMIN`
+
+---
+
+### Admin Mutations
+
+#### `adminSetContractorSubscription`
+
+Set a contractor's subscription directly (bypass payment).
+
+```graphql
+mutation AdminSetSub($input: AdminSetSubscriptionInput!) {
+  adminSetContractorSubscription(input: $input) {
+    success
+    message
+    subscription {
+      id
+      contractorId
+      subscriptionType
+      startDate
+      endDate
+    }
+  }
+}
+```
+
+**Roles:** `ADMIN`, `SUPER_ADMIN`
 
 ---
 
 ## Shared APIs
 
-These APIs are available to both Consumer and Contractor roles.
+These APIs are available to multiple roles.
 
 #### `marketplaceJob`
+
 Get a single job by ID.
 
 ```graphql
@@ -655,63 +939,51 @@ query GetJob($id: ID!) {
     jobNumber
     status
     serviceName
-    serviceDescription
-    quantity
-    unitPrice
-    totalAmount
-    currency
-    
+    serviceId
     consumerId
     consumerName
     consumerPhone
     consumerAddress
-    
     contractorId
     contractorName
     contractorPhone
-    
     locationId
     locationName
-    areaType
-    
+    priceSnapshot
+    areaTypeSnapshot
     acceptanceDeadline
-    jobStartDeadline
+    startDeadline
     completionDeadline
-    
     createdAt
+    paidAt
     acceptedAt
+    rejectedAt
     startedAt
     completedAt
-    cancelledAt
-    
+    closedAt
     rejectionReason
-    cancellationReason
+    updatedAt
   }
 }
 ```
 
-**Roles:** `CONSUMER`, `CONTRACTOR`, `ADMIN`
+**Roles:** Any authenticated user
 
 ---
 
-#### `marketplaceRating`
-Get a single rating by ID.
+#### `marketplaceContractorProfile`
+
+Get a contractor's marketplace profile.
 
 ```graphql
-query GetRating($id: ID!) {
-  marketplaceRating(id: $id) {
+query ContractorProfile($contractorId: ID!) {
+  marketplaceContractorProfile(contractorId: $contractorId) {
     id
-    jobId
-    jobNumber
-    raterId
-    raterName
-    raterRole
-    rateeId
-    rateeName
-    rateeRole
-    rating
-    comment
-    createdAt
+    contractorId
+    contractorName
+    isMarketplaceActive
+    subscriptionType
+    subscriptionValidTill
   }
 }
 ```
@@ -720,19 +992,67 @@ query GetRating($id: ID!) {
 
 ---
 
-#### `marketplaceRatingSummary`
-Get rating summary for a user.
+#### `marketplaceContractorLocations` / `marketplaceContractorServices`
 
 ```graphql
-query RatingSummary($userId: ID!) {
-  marketplaceRatingSummary(userId: $userId) {
-    userId
-    averageRating
-    totalRatings
-    ratingBreakdown {
-      stars
-      count
-      percentage
+query ContractorLocations($contractorId: ID!) {
+  marketplaceContractorLocations(contractorId: $contractorId) {
+    id
+    contractorId
+    locationId
+    assignedAt
+  }
+}
+
+query ContractorServices($contractorId: ID!) {
+  marketplaceContractorServices(contractorId: $contractorId) {
+    id
+    contractorId
+    serviceId
+    assignedAt
+  }
+}
+```
+
+**Roles:** `CONSUMER`, `CONTRACTOR`, `ADMIN`
+
+---
+
+#### `marketplaceContractorReviews`
+
+Get reviews for a contractor.
+
+```graphql
+query ContractorReviews($contractorId: ID!, $page: Int, $limit: Int) {
+  marketplaceContractorReviews(
+    contractorId: $contractorId
+    page: $page
+    limit: $limit
+  ) {
+    items {
+      id
+      consumerName
+      rating
+      comment
+      serviceName
+      createdAt
+    }
+    pagination {
+      total
+      page
+      limit
+      totalPages
+      hasNext
+      hasPrev
+    }
+    summary {
+      averageRating
+      totalRatings
+      oneStarCount
+      twoStarCount
+      threeStarCount
+      fourStarCount
+      fiveStarCount
     }
   }
 }
@@ -742,23 +1062,20 @@ query RatingSummary($userId: ID!) {
 
 ---
 
-#### `marketplacePaymentByJob`
-Get payment details for a job.
+#### `marketplaceRatingSummary`
+
+Get rating summary for a user.
 
 ```graphql
-query PaymentByJob($jobId: ID!) {
-  marketplacePaymentByJob(jobId: $jobId) {
-    id
-    jobId
-    jobNumber
-    amount
-    currency
-    status
-    gatewayProvider
-    gatewayOrderId
-    gatewayPaymentId
-    createdAt
-    paidAt
+query RatingSummary($userId: ID!) {
+  marketplaceRatingSummary(userId: $userId) {
+    averageRating
+    totalRatings
+    oneStarCount
+    twoStarCount
+    threeStarCount
+    fourStarCount
+    fiveStarCount
   }
 }
 ```
@@ -767,21 +1084,138 @@ query PaymentByJob($jobId: ID!) {
 
 ---
 
+#### `marketplacePaymentByJob`
+
+Get payment details for a job.
+
+```graphql
+query PaymentByJob($jobId: ID!) {
+  marketplacePaymentByJob(jobId: $jobId) {
+    id
+    jobId
+    amount
+    status
+    createdAt
+  }
+}
+```
+
+**Roles:** `CONSUMER`, `CONTRACTOR`, `ADMIN`
+
+---
+
+## Types
+
+### MarketplaceJob
+
+```graphql
+type MarketplaceJob {
+  id: ID!
+  jobNumber: String!
+  status: MarketplaceJobStatus!
+  consumerId: ID!
+  consumerName: String!
+  consumerPhone: String
+  consumerAddress: String
+  contractorId: ID!
+  contractorName: String!
+  contractorPhone: String
+  serviceId: ID!
+  serviceName: String!
+  locationId: ID!
+  locationName: String!
+  priceSnapshot: Float!
+  areaTypeSnapshot: MarketplaceAreaType!
+  acceptanceDeadline: DateTime!
+  startDeadline: DateTime
+  completionDeadline: DateTime
+  createdAt: DateTime!
+  paidAt: DateTime
+  acceptedAt: DateTime
+  rejectedAt: DateTime
+  startedAt: DateTime
+  completedAt: DateTime
+  closedAt: DateTime
+  rejectionReason: String
+  updatedAt: DateTime!
+}
+```
+
+### JobOtp
+
+```graphql
+type JobOtp {
+  id: ID!
+  jobId: ID!
+  otpType: MarketplaceOtpType!
+  code: String!
+  expiresAt: DateTime!
+  isUsed: Boolean!
+  usedAt: DateTime
+  createdAt: DateTime!
+}
+```
+
+### CreateJobResult
+
+```graphql
+type CreateJobResult {
+  jobId: ID!
+  jobNumber: String!
+  amount: Float!
+  paymentSessionId: String! # Cashfree placeholder
+  paymentUrl: String # Cashfree placeholder
+}
+```
+
+### ContractorReview
+
+```graphql
+type ContractorReview {
+  id: ID!
+  consumerName: String!
+  rating: Int!
+  comment: String
+  serviceName: String!
+  createdAt: DateTime!
+}
+```
+
+### ContractorSearchResult
+
+```graphql
+type ContractorSearchResult {
+  contractorId: ID!
+  contractorName: String!
+  companyName: String
+  phone: String!
+  ratingAvg: Float!
+  totalRatings: Int!
+  totalJobsCompleted: Int!
+  isPremiumContractor: Boolean!
+  priceForService: Float!
+}
+```
+
+---
+
 ## Input Types
 
 ### CreateJobInput
+
 ```graphql
 input CreateJobInput {
-  contractorId: ID!        # Selected contractor's ID
-  serviceId: ID!           # Selected service ID
-  locationId: ID!          # Consumer's village/location ID
-  quantity: Int = 1        # Quantity (default: 1)
-  consumerAddress: String  # Service address (optional)
-  consumerPhone: String    # Contact phone (optional)
+  contractorId: ID! # Selected contractor
+  serviceId: ID! # Selected service
+  locationId: ID! # Consumer's village/location
+  quantity: Int = 1 # Quantity (for UOMs with requiresQuantity)
+  consumerAddress: String # Service address (optional)
+  consumerPhone: String # Contact phone (optional)
 }
 ```
 
 ### AcceptJobInput
+
 ```graphql
 input AcceptJobInput {
   jobId: ID!
@@ -789,60 +1223,67 @@ input AcceptJobInput {
 ```
 
 ### RejectJobInput
+
 ```graphql
 input RejectJobInput {
   jobId: ID!
-  reason: String!          # Rejection reason (required)
+  reason: String!
 }
 ```
 
 ### GenerateOtpInput
+
 ```graphql
 input GenerateOtpInput {
   jobId: ID!
-  otpType: MarketplaceOtpType!  # START_JOB or COMPLETE_JOB
+  otpType: MarketplaceOtpType!
 }
 ```
 
 ### VerifyMarketplaceOtpInput
+
 ```graphql
 input VerifyMarketplaceOtpInput {
   jobId: ID!
-  code: String!            # 6-digit OTP code
+  code: String! # 6-digit OTP code
 }
 ```
 
 ### CancelJobInput
+
 ```graphql
 input CancelJobInput {
   jobId: ID!
-  reason: String           # Cancellation reason (optional)
+  reason: String # Optional
 }
 ```
 
 ### CreateRatingInput
+
 ```graphql
 input CreateRatingInput {
   jobId: ID!
-  rating: Int!             # 1-5 stars (required)
-  comment: String          # Review comment (max 500 chars)
+  rating: Int! # 1-5 stars
+  comment: String # Max 500 chars
 }
 ```
 
 ### ContractorSearchInput
+
 ```graphql
 input ContractorSearchInput {
-  locationId: ID!          # Village ID (required)
-  serviceId: ID!           # Service ID (required)
-  minRating: Int           # Minimum rating filter (1-5)
-  sortBy: String           # rating | price | completed_jobs
-  sortOrder: String        # asc | desc
+  locationId: ID! # Village ID (required)
+  serviceId: ID! # Service ID (required)
+  minRating: Int # Minimum rating filter
+  sortBy: String # rating | price | completed_jobs
+  sortOrder: String # asc | desc
   page: Int = 1
   limit: Int = 20
 }
 ```
 
 ### JobsFilterInput
+
 ```graphql
 input JobsFilterInput {
   status: MarketplaceJobStatus
@@ -850,7 +1291,7 @@ input JobsFilterInput {
   contractorId: ID
   serviceId: ID
   locationId: ID
-  search: String           # Search in job number, names
+  search: String
   dateFrom: DateTime
   dateTo: DateTime
   page: Int = 1
@@ -863,53 +1304,75 @@ input JobsFilterInput {
 ## Enums
 
 ### MarketplaceJobStatus
-| Value | Description |
-|-------|-------------|
-| `PAYMENT_PENDING` | Job created, awaiting payment |
-| `REQUESTED` | Payment complete, waiting for contractor |
-| `ACCEPTED` | Contractor accepted the job |
-| `REJECTED` | Contractor rejected the job |
-| `STARTED` | Job in progress (start OTP verified) |
-| `COMPLETED` | Job completed (completion OTP verified) |
-| `CLOSED` | Rating given, job fully closed |
-| `CANCELLED` | Consumer cancelled the job |
-| `REFUNDED` | Refund processed |
-| `SLA_BREACH` | SLA deadline breached |
+
+| Value             | Description                              |
+| ----------------- | ---------------------------------------- |
+| `PAYMENT_PENDING` | Job created, awaiting payment            |
+| `REQUESTED`       | Payment complete, waiting for contractor |
+| `ACCEPTED`        | Contractor accepted the job              |
+| `REJECTED`        | Contractor rejected the job              |
+| `STARTED`         | Job in progress (start OTP verified)     |
+| `COMPLETED`       | Job completed (completion OTP verified)  |
+| `CLOSED`          | Rating given, job fully closed           |
+| `CANCELLED`       | Consumer cancelled the job               |
+| `REFUNDED`        | Refund processed                         |
+| `SLA_BREACH`      | SLA deadline breached                    |
 
 ### MarketplaceOtpType
-| Value | Description |
-|-------|-------------|
-| `START_JOB` | OTP to start the job |
+
+| Value          | Description              |
+| -------------- | ------------------------ |
+| `START_JOB`    | OTP to start the job     |
 | `COMPLETE_JOB` | OTP to mark job complete |
 
 ### MarketplaceAreaType
-| Value | Description |
-|-------|-------------|
-| `URBAN` | Urban area |
+
+| Value        | Description     |
+| ------------ | --------------- |
+| `URBAN`      | Urban area      |
 | `SEMI_URBAN` | Semi-urban area |
-| `RURAL` | Rural area |
+| `RURAL`      | Rural area      |
 
 ### SubscriptionType
-| Value | Description |
-|-------|-------------|
-| `FREE` | Free tier (limited categories) |
-| `PREMIUM` | Premium tier (all categories) |
+
+| Value     | Description                    |
+| --------- | ------------------------------ |
+| `FREE`    | Free tier (limited categories) |
+| `PREMIUM` | Premium tier (all categories)  |
+
+### SubscriptionDuration
+
+| Value       | Description                  |
+| ----------- | ---------------------------- |
+| `MONTHLY`   | 1 month (₹499)               |
+| `QUARTERLY` | 3 months (₹1,197 — 20% off)  |
+| `ANNUAL`    | 12 months (₹4,491 — 25% off) |
 
 ### PaymentStatus
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Payment initiated |
-| `SUCCESS` | Payment successful |
-| `FAILED` | Payment failed |
-| `REFUNDED` | Payment refunded |
 
-### RefundStatus
-| Value | Description |
-|-------|-------------|
-| `PENDING` | Refund requested |
+| Value      | Description        |
+| ---------- | ------------------ |
+| `PENDING`  | Payment initiated  |
+| `SUCCESS`  | Payment successful |
+| `FAILED`   | Payment failed     |
+| `REFUNDED` | Payment refunded   |
+
+### RefundStatus / RefundReason
+
+| RefundStatus | Description            |
+| ------------ | ---------------------- |
+| `PENDING`    | Refund requested       |
 | `PROCESSING` | Refund being processed |
-| `SUCCESS` | Refund completed |
-| `FAILED` | Refund failed |
+| `SUCCESS`    | Refund completed       |
+| `FAILED`     | Refund failed          |
+
+| RefundReason          | Description                 |
+| --------------------- | --------------------------- |
+| `CONTRACTOR_REJECTED` | Contractor rejected the job |
+| `CONSUMER_CANCELLED`  | Consumer cancelled          |
+| `SLA_BREACH`          | SLA was breached            |
+| `ADMIN_CANCELLED`     | Admin cancelled             |
+| `OTHER`               | Other reason                |
 
 ---
 
@@ -922,45 +1385,44 @@ input JobsFilterInput {
 │                        CONSUMER FLOW                            │
 └─────────────────────────────────────────────────────────────────┘
 
-1. BROWSE SERVICES
-   ├── marketplaceServicesByCategory
-   └── marketplaceServicesWithPrices(areaType)
-
-2. SELECT LOCATION
+1. SELECT LOCATION (Village)
    ├── marketplaceStates
    ├── marketplaceDistricts(stateCode)
    ├── marketplaceSubDistricts(districtCode)
-   └── marketplaceVillages(subDistrictCode)
+   └── marketplaceVillages(districtCode, subDistrictCode?)
+       └── Returns areaType (URBAN/SEMI_URBAN/RURAL)
+
+2. BROWSE SERVICES (priced by areaType)
+   ├── marketplaceServicesByCategory(areaType)
+   └── marketplaceServicesWithPrices(areaType)
 
 3. SEARCH CONTRACTORS
-   └── searchMarketplaceContractors(locationId, serviceId)
+   └── searchMarketplaceContractors({ serviceId, locationId })
        ├── View Profile: marketplaceContractorProfile(contractorId)
-       ├── View Services: marketplaceContractorServices(contractorId)
+       ├── View Areas: marketplaceContractorLocations(contractorId)
        └── View Reviews: marketplaceContractorReviews(contractorId)
 
 4. CREATE JOB
-   └── createMarketplaceJob(input)
-       └── Returns paymentSession → Redirect to payment
+   └── createMarketplaceJob({ contractorId, serviceId, locationId, quantity })
+       └── Returns jobId + paymentSessionId
 
 5. PAYMENT
-   └── Complete payment on gateway
-       └── Webhook updates job status → REQUESTED
+   └── simulatePaymentSuccess(jobId)  [DEV ONLY]
+       └── Job status → REQUESTED
 
 6. TRACK JOB
    └── myMarketplaceJobs / marketplaceJob(id)
 
-7. CANCEL (Optional - before STARTED)
-   └── cancelMarketplaceJob(jobId, reason)
-       └── Auto-triggers refund
+7. VIEW OTP (when contractor generates it)
+   └── activeJobOtp(jobId)
+       └── Returns 6-digit code to show on screen
 
-8. RECEIVE SERVICE
-   └── Share OTPs when contractor requests
-       ├── START_JOB OTP → Job becomes STARTED
-       └── COMPLETE_JOB OTP → Job becomes COMPLETED
+8. CANCEL (Optional — before STARTED)
+   └── cancelMarketplaceJob({ jobId, reason })
 
 9. RATE CONTRACTOR
-   └── createMarketplaceRating(jobId, rating, comment)
-       └── Job becomes CLOSED
+   └── createMarketplaceRating({ jobId, rating, comment })
+       └── Job status → CLOSED
 ```
 
 ### Contractor Flow
@@ -974,38 +1436,41 @@ input JobsFilterInput {
    └── myContractorMarketplaceJobs(status: REQUESTED)
 
 2. ACCEPT OR REJECT
-   ├── acceptMarketplaceJob(jobId)
-   │   └── Job becomes ACCEPTED, SLA deadlines set
-   └── rejectMarketplaceJob(jobId, reason)
-       └── Job becomes REJECTED, consumer gets refund
+   ├── acceptMarketplaceJob({ jobId })
+   │   └── Job → ACCEPTED, SLA deadlines set
+   └── rejectMarketplaceJob({ jobId, reason })
+       └── Job → REJECTED, auto-refund triggered
 
 3. START JOB (At consumer location)
-   ├── generateMarketplaceOtp(jobId, START_JOB)
-   │   └── OTP sent to consumer's phone
-   └── verifyMarketplaceOtp(jobId, code)
-       └── Job becomes STARTED
+   ├── generateMarketplaceOtp({ jobId, otpType: START_JOB })
+   │   └── 6-digit code returned + sent to consumer
+   │   └── Consumer sees code via activeJobOtp(jobId)
+   └── verifyMarketplaceOtp({ jobId, code })
+       └── Job → STARTED
 
 4. COMPLETE JOB (After work done)
-   ├── generateMarketplaceOtp(jobId, COMPLETE_JOB)
-   │   └── OTP sent to consumer's phone
-   └── verifyMarketplaceOtp(jobId, code)
-       └── Job becomes COMPLETED
+   ├── generateMarketplaceOtp({ jobId, otpType: COMPLETE_JOB })
+   │   └── 6-digit code returned + sent to consumer
+   └── verifyMarketplaceOtp({ jobId, code })
+       └── Job → COMPLETED
 
-5. RATE CONSUMER (Optional)
-   └── createMarketplaceRating(jobId, rating, comment)
+5. SUBSCRIPTION UPGRADE
+   ├── subscriptionPlans → View plans
+   ├── mySubscriptionStatus → Check current plan
+   ├── initiateSubscriptionUpgrade({ contractorId, duration })
+   └── confirmSubscriptionPayment({ paymentIntentId })
+
+6. RATE CONSUMER (Optional)
+   └── createMarketplaceRating({ jobId, rating, comment })
 ```
 
 ### Job Status Flow
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                          JOB STATUS FLOW                                 │
-└──────────────────────────────────────────────────────────────────────────┘
-
                     ┌─────────────────┐
                     │ PAYMENT_PENDING │ ← createMarketplaceJob
                     └────────┬────────┘
-                             │ Payment Success
+                             │ Payment Success (webhook/simulate)
                              ▼
                     ┌─────────────────┐
          ┌─────────│    REQUESTED    │─────────┐
@@ -1022,7 +1487,7 @@ input JobsFilterInput {
         │                 │                   │
         │                 ▼                   │
         │           ┌─────────┐               │
-        │           │ STARTED │───cancelJob───┤
+        │           │ STARTED │               │
         │           └────┬────┘               │
         │                │                    │
         │         verifyOtp(COMPLETE)         │
@@ -1051,28 +1516,27 @@ input JobsFilterInput {
 
 ## Error Codes
 
-| Code | Message | Cause |
-|------|---------|-------|
-| `JOB_NOT_FOUND` | Job not found | Invalid job ID |
-| `INVALID_STATUS` | Invalid job status for this action | Trying to perform action on wrong status |
-| `NOT_AUTHORIZED` | You are not authorized | Job doesn't belong to user |
-| `OTP_EXPIRED` | OTP has expired | OTP older than 10 minutes |
-| `OTP_INVALID` | Invalid OTP code | Wrong OTP entered |
-| `ALREADY_RATED` | You have already rated this job | Duplicate rating attempt |
-| `CONTRACTOR_NOT_AVAILABLE` | Contractor not available | Contractor deactivated/unavailable |
-| `SERVICE_NOT_AVAILABLE` | Service not available | Service deactivated |
-| `LOCATION_NOT_SERVED` | Contractor doesn't serve this location | Location not in contractor's coverage |
+| Code          | Message                          | Cause                            |
+| ------------- | -------------------------------- | -------------------------------- |
+| `NOT_FOUND`   | Job/Service/Contractor not found | Invalid ID                       |
+| `BAD_REQUEST` | Invalid status for this action   | Wrong job state for operation    |
+| `FORBIDDEN`   | Not authorized for this job      | Job doesn't belong to user       |
+| `BAD_REQUEST` | No valid OTP found               | OTP expired or already used      |
+| `BAD_REQUEST` | Invalid OTP                      | Wrong code entered               |
+| `BAD_REQUEST` | Max OTP attempts reached         | 3+ failed attempts               |
+| `BAD_REQUEST` | No pricing configured            | Missing pricing for service+area |
+| `BAD_REQUEST` | Location not classified          | Admin hasn't set area type       |
 
 ---
 
 ## Rate Limits
 
-| Endpoint Type | Limit |
-|---------------|-------|
-| Queries | 100 requests/minute |
-| Mutations | 30 requests/minute |
+| Endpoint Type  | Limit               |
+| -------------- | ------------------- |
+| Queries        | 100 requests/minute |
+| Mutations      | 30 requests/minute  |
 | OTP Generation | 5 requests/job/hour |
 
 ---
 
-*Last Updated: 19 February 2026*
+_Last Updated: 24 February 2026_

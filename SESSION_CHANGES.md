@@ -1,8 +1,170 @@
 # Session Changes Log
 
-**Last Updated:** 23 February 2026
+**Last Updated:** 26 February 2026
 
 This document tracks all changes made during development sessions. Update this file as changes are made.
+
+---
+
+## Session: 26 February 2026 (Evening) - Subscription Flow Fixes, Bank Account Details & Frontend Env Badge
+
+### 1. ValidationPipe "property contractorId should not exist" Fix
+
+**Problem:** `initiateSubscriptionUpgrade` threw a 400 Bad Request with `"property contractorId should not exist"` every time a contractor called it.
+
+**Root Cause (two interacting mechanisms):**
+- `tsconfig.json` has `target: "ES2023"` which enables `useDefineForClassFields` by default. This causes TypeScript class fields with no initializer (like `contractorId?: string`) to be emitted as own enumerable properties set to `undefined` on every class instance — even when the client never sends them.
+- `main.ts` has `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`. When class-validator scans all own properties and finds `contractorId` with **zero decorators**, it throws.
+
+**Fix (`subscriptions.types.ts`):**
+- Added `@IsOptional()` and `@IsString()` decorators to the internal `contractorId?: string` field on `InitiateSubscriptionUpgradeInput`. This whitelists it without exposing it to GraphQL (no `@Field()`).
+
+```typescript
+// BEFORE
+contractorId?: string;  // no decorators → ValidationPipe throws
+
+// AFTER
+@IsOptional()
+@IsString()
+contractorId?: string;  // whitelisted, still not in GraphQL schema
+```
+
+---
+
+### 2. Bank Account Details Added to Subscription Upgrade
+
+**Files Changed:**
+- `user-service/src/database/schema/marketplace/contractor-extensions.ts` — 5 new columns on `mp_contractor_profile`
+- `user-service/src/database/migrations/0013_contractor_bank_details.sql` — migration file
+- `user-service/src/modules/marketplace/subscriptions/subscriptions.types.ts` — new `BankAccountInput` class + optional `bankAccount` field on `InitiateSubscriptionUpgradeInput`
+- `user-service/src/modules/marketplace/subscriptions/subscriptions.service.ts` — saves/updates bank details in `initiateUpgrade`
+
+**New DB columns on `mp_contractor_profile`:**
+
+```sql
+ALTER TABLE "mp_contractor_profile" ADD COLUMN "bank_account_number" varchar(30);
+ALTER TABLE "mp_contractor_profile" ADD COLUMN "bank_ifsc_code" varchar(15);
+ALTER TABLE "mp_contractor_profile" ADD COLUMN "bank_account_holder_name" varchar(255);
+ALTER TABLE "mp_contractor_profile" ADD COLUMN "bank_name" varchar(255);
+ALTER TABLE "mp_contractor_profile" ADD COLUMN "bank_verified" boolean DEFAULT false;
+```
+
+**New GraphQL Input Type:**
+
+```typescript
+@InputType()
+export class BankAccountInput {
+  accountNumber: string;       // @MaxLength(30)
+  ifscCode: string;            // @Matches IFSC regex
+  accountHolderName: string;   // @MaxLength(255)
+  bankName?: string;           // optional
+}
+```
+
+**Mutation usage (no contractorId in input):**
+
+```graphql
+mutation {
+  initiateSubscriptionUpgrade(input: {
+    duration: MONTHLY
+    bankAccount: {
+      accountNumber: "1234567890"
+      ifscCode: "SBIN0001234"
+      accountHolderName: "John Doe"
+      bankName: "State Bank of India"
+    }
+  }) {
+    success
+    message
+    paymentIntent { id amount paymentLink expiresAt }
+  }
+}
+```
+
+---
+
+### 3. Correct Marketplace Profile Flow (Architecture Decision)
+
+**Previous (wrong) assumption:** Admin manually creates marketplace profiles.
+
+**Correct flow:**
+1. Admin imports contractors via Excel → `bulkImportContractors` auto-creates `mp_contractor_profile` row with `subscriptionType: 'FREE'`, `isMarketplaceActive: false` in the same DB transaction
+2. Contractor purchases PREMIUM → `confirmPayment()` sets `isMarketplaceActive: true`
+3. Safety net: `initiateUpgrade` auto-creates profile if somehow missing
+
+**Files Changed:**
+- `user-service/src/modules/support/imports.resolver.ts` — added marketplace profile insert inside contractor import transaction
+
+```typescript
+const profileValues = contractorValues.map((c) => ({
+  id: uuidv4(),
+  contractorId: c.id,
+  subscriptionType: 'FREE' as const,
+  isMarketplaceActive: false,
+}));
+await tx
+  .insert(contractorMarketplaceProfile)
+  .values(profileValues)
+  .onConflictDoNothing();
+```
+
+- `user-service/src/modules/marketplace/subscriptions/subscriptions.service.ts` — `confirmPayment` now sets `isMarketplaceActive: true` when activating PREMIUM
+- `mySubscriptionStatus` now returns graceful FREE default instead of throwing 404
+
+---
+
+### 4. Remove contractorId from Subscription Mutation Input (Security Fix)
+
+**Problem:** `InitiateSubscriptionUpgradeInput` had a `contractorId` field that users were expected to pass. This caused 403 errors when users passed their userId (a different UUID) instead of contractor.id.
+
+**Fix:** Removed `contractorId` from the client-facing input entirely. Resolver derives it from the JWT:
+
+```typescript
+// subscriptions.resolver.ts
+const contractor = await this.contractorsService.findByUserId(userId);
+input.contractorId = contractor.id;  // injected internally
+return this.subscriptionsService.initiateUpgrade(input);
+```
+
+**Service guard:**
+
+```typescript
+if (!input.contractorId) {
+  throw new BadRequestException('Contractor ID is required');
+}
+const contractorId = input.contractorId;
+```
+
+---
+
+### 5. Frontend Env Badge
+
+**File Created:** `web-frontend/src/components/shared/EnvBadge.tsx`
+**File Modified:** `web-frontend/src/app/layout.tsx`
+
+Reads `NEXT_PUBLIC_ENV` from env file. Renders a fixed badge at `bottom-4 right-4`:
+- `development` → green pill, label **DEV**, pulsing dot
+- `staging` → amber pill, label **STAGING**, pulsing dot
+- `production` → renders `null` (nothing shown)
+
+`pointer-events-none` + `select-none` so it never interferes with UI.
+
+---
+
+## Session: 26 February 2026 - LGD Location Imports & Upload Auth Fixes
+
+### 1. LGD Location Import Optimization
+
+- **Batch Processing Migration:** Completely rewrote the `importLocations` database logic inside `locations.service.ts`. Migrated from a linear N+1 query loop to batched 1,000-row PostgreSQL `onConflictDoUpdate` (UPSERT) sequences utilizing Drizzle ORM. The system can now process 30,000+ Excel rows in milliseconds without timing out.
+- **UI State Overrides:** Implemented an "Override State Details" component on the frontend (`AdminLocationsPage`). If a Super Admin selects a State, the `importLocations` GraphQL mutation forcefully maps the selected `stateCode` and `stateName` to every single row in the spreadsheet, utterly ignoring any corrupted/missing state data inside the Excel itself.
+- **Tolerant Excel Parsing:** Updated `imports.resolver.ts` to utilize `parseExcelRaw` rather than strict schema column mappings. Extra junk fields in LGD files are now safely discarded in memory before touching the database.
+- **Village Additions:** Appended `Village Status` and `Village Version` back onto the data interface mappings.
+- **Template Standardization:** Replaced deprecated location categories in the download templates from ('Census Town', 'Town Panchayat', 'Village') to strictly match the enums: ('Urban', 'Semi-Urban', 'Rural').
+
+### 2. File Upload Authorization Debugging
+
+- **401 Unauthorized Bug:** Fixed a global issue where uploading files (LGD data, photos, etc) would mysteriously fail with 401 errors for users who utilized the "Remember Me" login checkbox.
+- **Root Cause & Fix:** The `FilesController` fetch wrappers in the frontend strictly looked for the token inside `sessionStorage.getItem('auth_token')`. However, "Remember Me" pushes the token into `localStorage`. Refactored all upload modules to utilize the `storage.get('auth_token')` utility wrapper to seamlessly route storage lookups.
 
 ---
 

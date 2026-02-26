@@ -1,7 +1,7 @@
 # Marketplace API Reference
 
 > Complete API documentation matching the implemented backend schema.
-> **Last Updated:** 24 February 2026
+> **Last Updated:** 26 February 2026
 
 ---
 
@@ -524,21 +524,28 @@ query MyContractorJobs($filters: JobsFilterInput) {
 
 #### `mySubscriptionStatus`
 
-Get the current subscription status for the logged-in contractor.
+Get the current subscription status for the logged-in contractor. Returns a graceful FREE default if no marketplace profile row exists yet — never throws 404.
 
 ```graphql
 query MySubscriptionStatus {
   mySubscriptionStatus {
-    contractorId
     currentType
     validTill
-    isExpired
+    isActive
     daysRemaining
+    canUpgrade
+    canRenew
   }
 }
 ```
 
 **Roles:** `CONTRACTOR`
+
+**Notes:**
+- `canUpgrade` → `true` when currently FREE
+- `canRenew` → `true` when PREMIUM with ≤ 30 days remaining
+- `daysRemaining` → `0` if FREE or expired
+- Always returns a valid object (never 404)
 
 ---
 
@@ -745,22 +752,79 @@ mutation VerifyOTP($input: VerifyMarketplaceOtpInput!) {
 
 #### `initiateSubscriptionUpgrade`
 
-Initiate subscription upgrade to PREMIUM.
+Initiate subscription upgrade to PREMIUM. `contractorId` is **never** passed by the client — it is derived automatically from the JWT token.
+
+This mutation also optionally saves bank account details for payout purposes. If the contractor's marketplace profile does not yet exist, it is auto-created as FREE (inactive).
 
 ```graphql
 mutation InitiateUpgrade($input: InitiateSubscriptionUpgradeInput!) {
   initiateSubscriptionUpgrade(input: $input) {
-    paymentIntentId
-    plan {
+    success
+    message
+    paymentIntent {
+      id
+      contractorId
       duration
-      durationMonths
-      price
-      discountPercent
-      finalPrice
-      description
+      amount
+      status
+      paymentLink
+      orderId
+      expiresAt
+      createdAt
     }
-    paymentUrl
-    expiresAt
+  }
+}
+```
+
+**Variables — minimal:**
+
+```json
+{
+  "input": {
+    "duration": "MONTHLY"
+  }
+}
+```
+
+**Variables — with bank account:**
+
+```json
+{
+  "input": {
+    "duration": "QUARTERLY",
+    "bankAccount": {
+      "accountNumber": "1234567890",
+      "ifscCode": "SBIN0001234",
+      "accountHolderName": "John Doe",
+      "bankName": "State Bank of India"
+    }
+  }
+}
+```
+
+**Roles:** `CONTRACTOR`
+
+> ⚠️ **Breaking change from previous version:** `contractorId` has been removed from the input. It was causing a `"property contractorId should not exist"` 400 error. The server now reads it from the JWT session automatically.
+
+**Business Rules:**
+- If no marketplace profile exists → auto-creates FREE profile before initiating payment
+- If `bankAccount` is provided → saves/updates bank details on the contractor profile
+- If already PREMIUM with > 30 days remaining → throws `CONFLICT` (renewal available at ≤ 30 days)
+- Payment intent expires in **30 minutes**
+
+---
+
+#### `confirmSubscriptionPayment`
+
+Confirm subscription payment after payment gateway callback. On success, sets `isMarketplaceActive = true` on the contractor's profile, enabling them to appear in marketplace search results.
+
+```graphql
+mutation ConfirmPayment($input: ConfirmSubscriptionPaymentInput!) {
+  confirmSubscriptionPayment(input: $input) {
+    success
+    message
+    newSubscriptionType
+    validTill
   }
 }
 ```
@@ -770,37 +834,18 @@ mutation InitiateUpgrade($input: InitiateSubscriptionUpgradeInput!) {
 ```json
 {
   "input": {
-    "contractorId": "contractor-uuid",
-    "duration": "MONTHLY"
+    "paymentIntentId": "payment-intent-uuid",
+    "paymentReference": "cashfree-ref-123"
   }
 }
 ```
 
 **Roles:** `CONTRACTOR`
 
----
-
-#### `confirmSubscriptionPayment`
-
-Confirm subscription payment after payment gateway callback.
-
-```graphql
-mutation ConfirmPayment($input: ConfirmSubscriptionPaymentInput!) {
-  confirmSubscriptionPayment(input: $input) {
-    success
-    message
-    subscription {
-      id
-      contractorId
-      subscriptionType
-      startDate
-      endDate
-    }
-  }
-}
-```
-
-**Roles:** `CONTRACTOR`
+**Side effects:**
+- Sets `isMarketplaceActive = true` → contractor becomes visible in consumer search
+- Adds row to subscription history
+- Payment intent status → `SUCCESS`
 
 ---
 
@@ -873,11 +918,12 @@ Admin queries for checking any contractor's subscription.
 ```graphql
 query ContractorSubStatus($contractorId: ID!) {
   contractorSubscriptionStatus(contractorId: $contractorId) {
-    contractorId
     currentType
     validTill
-    isExpired
+    isActive
     daysRemaining
+    canUpgrade
+    canRenew
   }
 }
 
@@ -889,6 +935,7 @@ query ContractorSubHistory($contractorId: ID!) {
     startDate
     endDate
     paymentId
+    isActive
     createdAt
   }
 }
@@ -1156,6 +1203,56 @@ type JobOtp {
 }
 ```
 
+### SubscriptionStatus
+
+```graphql
+type SubscriptionStatus {
+  currentType: SubscriptionType!   # FREE | PREMIUM
+  validTill: DateTime              # null if FREE
+  isActive: Boolean!               # true if PREMIUM and not expired
+  daysRemaining: Int!              # 0 if FREE or expired
+  canUpgrade: Boolean!             # true if currently FREE
+  canRenew: Boolean!               # true if PREMIUM with ≤30 days left
+}
+```
+
+### SubscriptionUpgradeResponse
+
+```graphql
+type SubscriptionUpgradeResponse {
+  success: Boolean!
+  message: String!
+  paymentIntent: SubscriptionPaymentIntent
+}
+```
+
+### SubscriptionPaymentIntent
+
+```graphql
+type SubscriptionPaymentIntent {
+  id: ID!
+  contractorId: ID!
+  duration: SubscriptionDuration!
+  amount: Float!
+  status: SubscriptionPaymentStatus!
+  paymentLink: String
+  orderId: String
+  expiresAt: DateTime!
+  createdAt: DateTime!
+}
+```
+
+### SubscriptionConfirmResponse
+
+```graphql
+type SubscriptionConfirmResponse {
+  success: Boolean!
+  message: String!
+  newSubscriptionType: SubscriptionType
+  validTill: DateTime
+}
+```
+
 ### CreateJobResult
 
 ```graphql
@@ -1268,6 +1365,46 @@ input CreateRatingInput {
 }
 ```
 
+### BankAccountInput
+
+```graphql
+input BankAccountInput {
+  accountNumber: String!       # Max 30 chars
+  ifscCode: String!            # Format: SBIN0001234 (regex validated)
+  accountHolderName: String!   # Max 255 chars
+  bankName: String             # Optional, max 255 chars
+}
+```
+
+### InitiateSubscriptionUpgradeInput
+
+```graphql
+input InitiateSubscriptionUpgradeInput {
+  duration: SubscriptionDuration!  # MONTHLY | QUARTERLY | YEARLY
+  bankAccount: BankAccountInput    # Optional — saves/updates payout account
+  # contractorId is NOT a client field — injected from JWT by the server
+}
+```
+
+### ConfirmSubscriptionPaymentInput
+
+```graphql
+input ConfirmSubscriptionPaymentInput {
+  paymentIntentId: ID!     # UUID from initiateSubscriptionUpgrade response
+  paymentReference: String # Optional payment gateway reference
+}
+```
+
+### AdminSetSubscriptionInput
+
+```graphql
+input AdminSetSubscriptionInput {
+  contractorId: ID!              # Target contractor
+  subscriptionType: SubscriptionType!  # FREE | PREMIUM
+  durationMonths: Int            # Required for PREMIUM
+}
+```
+
 ### ContractorSearchInput
 
 ```graphql
@@ -1342,13 +1479,22 @@ input JobsFilterInput {
 
 ### SubscriptionDuration
 
-| Value       | Description                  |
-| ----------- | ---------------------------- |
-| `MONTHLY`   | 1 month (₹499)               |
-| `QUARTERLY` | 3 months (₹1,197 — 20% off)  |
-| `ANNUAL`    | 12 months (₹4,491 — 25% off) |
+| Value       | Description                   |
+| ----------- | ----------------------------- |
+| `MONTHLY`   | 1 month (₹499)                |
+| `QUARTERLY` | 3 months (₹1,347 — 10% off)  |
+| `YEARLY`    | 12 months (₹4,491 — 25% off) |
 
-### PaymentStatus
+### SubscriptionPaymentStatus
+
+| Value     | Description                          |
+| --------- | ------------------------------------ |
+| `PENDING` | Payment intent created, awaiting pay |
+| `SUCCESS` | Payment confirmed                    |
+| `FAILED`  | Payment failed                       |
+| `EXPIRED` | Payment intent expired (30 min TTL)  |
+
+### PaymentStatus (Job Payments)
 
 | Value      | Description        |
 | ---------- | ------------------ |
@@ -1456,9 +1602,12 @@ input JobsFilterInput {
 
 5. SUBSCRIPTION UPGRADE
    ├── subscriptionPlans → View plans
-   ├── mySubscriptionStatus → Check current plan
-   ├── initiateSubscriptionUpgrade({ contractorId, duration })
-   └── confirmSubscriptionPayment({ paymentIntentId })
+   ├── mySubscriptionStatus → Check current plan (no 404 — returns FREE default if no profile)
+   ├── initiateSubscriptionUpgrade({ duration, bankAccount? })
+   │   └── contractorId is auto-injected from JWT — DO NOT pass it
+   │   └── Auto-creates FREE marketplace profile if missing
+   └── confirmSubscriptionPayment({ paymentIntentId, paymentReference? })
+       └── Sets isMarketplaceActive=true → contractor appears in search
 
 6. RATE CONSUMER (Optional)
    └── createMarketplaceRating({ jobId, rating, comment })
@@ -1539,4 +1688,4 @@ input JobsFilterInput {
 
 ---
 
-_Last Updated: 24 February 2026_
+_Last Updated: 26 February 2026_

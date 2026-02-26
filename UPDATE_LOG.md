@@ -1,10 +1,107 @@
 # MESCOM Smart Meter System - Update Log
 
-**Last Updated:** 23 February 2026 (Branding, Login Overrides, Forgot Password, & Multi-Tenancy)
+**Last Updated:** 26 February 2026 (Subscription Fixes, Bank Accounts & Env Badge)
 
 ---
 
-## 📋 Latest Session Context (23 Feb 2026 - Branding, Login Overrides, Forgot Password, and Multi-Tenancy)
+## 📋 Latest Session Context (26 Feb 2026 Evening — Subscription Flow & Frontend Env Badge)
+
+### What Was Done This Session:
+
+#### **1. VALIDATIONPIPE "property contractorId should not exist" — ROOT CAUSE & FIX**
+
+**Error:** Every call to `initiateSubscriptionUpgrade` returned:
+```json
+{ "message": ["property contractorId should not exist"], "statusCode": 400 }
+```
+
+**Why it happened (two mechanisms combined):**
+- `target: "ES2023"` in `tsconfig.json` → TypeScript emits class fields as `Object.defineProperty` calls, meaning `contractorId?: string` becomes an own enumerable property set to `undefined` on every class instance — even when the client sends no such field.
+- `ValidationPipe({ forbidNonWhitelisted: true })` in `main.ts` → any property with no class-validator decorator on the class is rejected.
+
+**Fix:** Added `@IsOptional() @IsString()` to the internal `contractorId` field. This whitelists it without adding `@Field()` so it never enters the GraphQL schema.
+
+---
+
+#### **2. BANK ACCOUNT DETAILS ON SUBSCRIPTION UPGRADE ✅ NEW**
+
+**New DB columns on `mp_contractor_profile`:**
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `bank_account_number` | `varchar(30)` | Account number |
+| `bank_ifsc_code` | `varchar(15)` | IFSC code |
+| `bank_account_holder_name` | `varchar(255)` | Account holder name |
+| `bank_name` | `varchar(255)` | Bank name (optional) |
+| `bank_verified` | `boolean` | Default false, for future Cashfree verify API |
+
+**Migration:** `0013_contractor_bank_details.sql` (run `pnpm run db:migrate`)
+
+**New GraphQL Input:** `BankAccountInput` — validated with IFSC regex, `@MaxLength`, `@IsNotEmpty`
+
+**Integration:** `initiateSubscriptionUpgrade` accepts optional `bankAccount` field. If provided, saves to profile (or updates if profile already exists, resets `bankVerified = false`).
+
+---
+
+#### **3. MARKETPLACE PROFILE CREATION FLOW (Architecture)**
+
+**Correct flow established:**
+
+```
+Excel Import → auto-create FREE profile (isMarketplaceActive: false)
+                        ↓
+              Contractor purchases PREMIUM
+                        ↓
+              confirmPayment() → isMarketplaceActive = true
+                        ↓
+              Contractor appears in consumer search
+```
+
+**Changes:**
+- `imports.resolver.ts`: `bulkImportContractors` transaction now inserts `mp_contractor_profile` rows (FREE, inactive) with `onConflictDoNothing` safety
+- `subscriptions.service.ts`: `confirmPayment` sets `isMarketplaceActive = true`
+- `subscriptions.service.ts`: `getSubscriptionStatus` returns graceful FREE default (no 404)
+- `subscriptions.service.ts`: `initiateUpgrade` auto-creates profile if missing (safety net)
+
+---
+
+#### **4. CONTRACTOR ID SECURITY FIX**
+
+- **Removed** `contractorId` from `InitiateSubscriptionUpgradeInput` client input
+- Resolver derives `contractorId` from JWT (`findByUserId`) and injects it internally
+- Eliminates 403 "You can only upgrade your own subscription" confusion where users were passing `userId` instead of `contractor.id`
+- Service guards with `if (!input.contractorId) throw new BadRequestException`
+
+---
+
+#### **5. FRONTEND ENV BADGE**
+
+- **New component:** `web-frontend/src/components/shared/EnvBadge.tsx`
+- Reads `NEXT_PUBLIC_ENV` (set per `.env.development` / `.env.staging` / `.env.production`)
+- `development` → green **DEV** badge at bottom-right
+- `staging` → amber **STAGING** badge at bottom-right
+- `production` → renders nothing
+- Fixed position, `pointer-events-none`, `select-none`, `z-[9999]`
+
+---
+
+## 📋 Previous Session Context (26 Feb 2026 Morning — LGD Import Scaling & 401 Upload Fixes)
+
+### What Was Done This Session:
+
+#### **1. LGD EXCEL IMPORT SCALING & OVERRIDES**
+
+- **Drizzle Batch UPSERTs (`locations.service.ts`):** Ripped out the sequential DB query loop causing application timeouts off 30,000+ row datasets. Re-architected with 1,000-size array chunks running PostgreSQL `onConflictDoUpdate` upserts against the `villageCode` constraint. Drastically increased write scaling.
+- **Frontend State Override Pipeline:** Added an explicit State selection UI dropdown over the upload component. Super Admins can map an overarching State (e.g. Karnataka) bridging the payload through the GraphQL `$stateCode` variables, commanding the backend to overwrite whatever corrupt state strings are actually living inside the `.xlsx` file.
+- **Header Tolerances & Adjustments:** Swapped logic to `parseExcelRaw` to discard unaccounted Excel columns dynamically. Handled new arrays for `Village Status` and `Village Version`. Mutated template examples to map perfectly against frontend enums (`Urban`, `Semi-Urban`, `Rural`).
+
+#### **2. FILE UPLOAD 401 UNAUTHORIZED BUG**
+
+- **Token Storage Isolation Gap:** Evaluated the REST Guard mechanisms when `POST /files/upload/private/imports` threw 401 Unauthorized returns on logged-in sessions. Noticed that file boundary fetches were strictly pulling authorization bearer fragments from `sessionStorage`, completely breaking the feature for anyone using `localStorage` via the "Remember Me" flag. Standardized all hooks onto the `storage.get('auth_token')` helper utility for parity.
+
+---
+
+## 📋 Previous Session Context (23 Feb 2026 - Branding, Login Overrides, Forgot Password, and Multi-Tenancy)
 
 ### What Was Done This Session:
 

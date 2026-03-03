@@ -1,4 +1,5 @@
 # Marketplace Mobile App — API Flows
+
 **For:** Consumer App & Contractor App  
 **Backend:** `user-service` (NestJS GraphQL)  
 **Last Updated:** 27 February 2026  
@@ -8,6 +9,7 @@
 ---
 
 ## Table of Contents
+
 1. [Authentication (Login)](#1-authentication)
 2. [Consumer Flow](#2-consumer-flow)
 3. [Contractor Flow](#3-contractor-flow)
@@ -22,6 +24,7 @@
 Both consumer and contractor log in via **OTP on phone number**.
 
 ### Step 1 — Request OTP
+
 ```graphql
 mutation RequestOtp($input: RequestLoginOtpInput!) {
   requestLoginOtp(input: $input) {
@@ -30,20 +33,24 @@ mutation RequestOtp($input: RequestLoginOtpInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
     "phone": "9876543210",
-    "loginType": "CONSUMER"   // or "CONTRACTOR"
+    "loginType": "CONSUMER" // or "CONTRACTOR"
   }
 }
 ```
+
 > `loginType` must match the user's actual role. Wrong type → error.
 
 ---
 
 ### Step 2 — Verify OTP → Get Token
+
 ```graphql
 mutation VerifyOtp($input: VerifyLoginOtpInput!) {
   verifyLoginOtp(input: $input) {
@@ -58,7 +65,9 @@ mutation VerifyOtp($input: VerifyLoginOtpInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -68,6 +77,7 @@ mutation VerifyOtp($input: VerifyLoginOtpInput!) {
   }
 }
 ```
+
 **Save:** Store `accessToken` — attach as `Authorization: Bearer <accessToken>` on all subsequent requests. Store `refreshToken` separately for obtaining new access tokens when the current one expires.
 
 ---
@@ -86,6 +96,7 @@ Select Village → Browse Services → Search Contractors → Create Job
 Consumer must pick their village to get area-based pricing.
 
 #### 1a. Get all states
+
 ```graphql
 query GetStates {
   marketplaceStates {
@@ -94,11 +105,13 @@ query GetStates {
   }
 }
 ```
+
 **Returns:** `[{ code: "29", name: "Karnataka" }]`
 
 ---
 
 #### 1b. Get districts for selected state
+
 ```graphql
 query GetDistricts($stateCode: String!) {
   marketplaceDistricts(stateCode: $stateCode) {
@@ -108,11 +121,13 @@ query GetDistricts($stateCode: String!) {
   }
 }
 ```
+
 **Input:** `{ "stateCode": "29" }` (from Step 1a)
 
 ---
 
 #### 1c. Get sub-districts for selected district
+
 ```graphql
 query GetSubDistricts($districtCode: String!) {
   marketplaceSubDistricts(districtCode: $districtCode) {
@@ -122,13 +137,19 @@ query GetSubDistricts($districtCode: String!) {
   }
 }
 ```
+
 **Input:** `{ "districtCode": "572" }` (from Step 1b)
 
 ---
 
 #### 1d. Get villages for selected sub-district
+
 ```graphql
-query GetVillages($districtCode: String!, $subDistrictCode: String, $classifiedOnly: Boolean) {
+query GetVillages(
+  $districtCode: String!
+  $subDistrictCode: String
+  $classifiedOnly: Boolean
+) {
   marketplaceVillages(
     districtCode: $districtCode
     subDistrictCode: $subDistrictCode
@@ -144,7 +165,9 @@ query GetVillages($districtCode: String!, $subDistrictCode: String, $classifiedO
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "districtCode": "572",
@@ -152,6 +175,7 @@ query GetVillages($districtCode: String!, $subDistrictCode: String, $classifiedO
   "classifiedOnly": true
 }
 ```
+
 > **IMPORTANT:** Only villages where `isClassified: true` and `areaType` is set will appear when `classifiedOnly: true`. These are the only villages eligible for booking. Admin must classify villages first.
 
 **Save:** The selected village's `id` = **`locationId`** (used in every booking step). Also save `areaType` (URBAN / SEMI_URBAN / RURAL) — used to fetch prices.
@@ -161,6 +185,7 @@ query GetVillages($districtCode: String!, $subDistrictCode: String, $classifiedO
 ### Step 2 — Browse Services with Prices
 
 #### Option A — Grouped by category (recommended for UI)
+
 ```graphql
 query ServicesByCategory($areaType: AreaType!) {
   marketplaceServicesByCategory(areaType: $areaType) {
@@ -192,11 +217,13 @@ query ServicesByCategory($areaType: AreaType!) {
   }
 }
 ```
+
 **Input:** `{ "areaType": "URBAN" }` (from selected village's `areaType`)
 
 ---
 
 #### Option B — Flat list with prices
+
 ```graphql
 query ServicesWithPrices($areaType: AreaType!) {
   marketplaceServicesWithPrices(areaType: $areaType) {
@@ -251,7 +278,9 @@ query SearchContractors($input: ContractorSearchInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -265,10 +294,12 @@ query SearchContractors($input: ContractorSearchInput!) {
   }
 }
 ```
+
 > `locationId` = village `id` from Step 1d  
 > `serviceId` = service `id` from Step 2
 
 **What it does internally:** Finds contractors who:
+
 1. Are **PREMIUM** subscribers (FREE contractors do not appear in search)
 2. Have an active marketplace profile
 3. Have selected a coverage area that **includes the consumer's location** — hierarchical match: contractor who selected the consumer's district covers all villages in it; one who selected the sub-district covers all villages in it; one who selected the exact village covers that village only
@@ -280,6 +311,7 @@ query SearchContractors($input: ContractorSearchInput!) {
 ---
 
 #### Optional — View Contractor Profile & Reviews
+
 ```graphql
 query ContractorProfile($contractorId: ID!) {
   marketplaceContractorProfile(contractorId: $contractorId) {
@@ -299,7 +331,11 @@ query ContractorProfile($contractorId: ID!) {
 }
 
 query ContractorReviews($contractorId: ID!, $page: Int, $limit: Int) {
-  marketplaceContractorReviews(contractorId: $contractorId, page: $page, limit: $limit) {
+  marketplaceContractorReviews(
+    contractorId: $contractorId
+    page: $page
+    limit: $limit
+  ) {
     items {
       id
       consumerName
@@ -336,7 +372,9 @@ mutation CreateJob($input: CreateJobInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -349,10 +387,12 @@ mutation CreateJob($input: CreateJobInput!) {
   }
 }
 ```
+
 > `quantity` — only required if `uom.requiresQuantity = true`, otherwise send `1`  
 > `consumerAddress` and `consumerPhone` are optional but recommended
 
 **What happens internally:**
+
 1. Verifies contractor is active
 2. Verifies service is active
 3. Verifies location is classified and has `areaType`
@@ -367,7 +407,7 @@ mutation CreateJob($input: CreateJobInput!) {
 
 ---
 
-### Step 5 — Simulate Payment *(DEV ONLY — will be replaced by Cashfree)*
+### Step 5 — Simulate Payment _(DEV ONLY — will be replaced by Cashfree)_
 
 ```graphql
 mutation SimulatePayment($jobId: ID!) {
@@ -379,6 +419,7 @@ mutation SimulatePayment($jobId: ID!) {
   }
 }
 ```
+
 **Input:** `{ "jobId": "<job-uuid>" }`
 
 **What it does:** Moves job from `PAYMENT_PENDING` → `REQUESTED` and sets `paidAt`. In production this will be triggered by Cashfree webhook.
@@ -390,6 +431,7 @@ mutation SimulatePayment($jobId: ID!) {
 ### Step 6 — Track Job
 
 #### Poll single job (refresh every 10s for active jobs)
+
 ```graphql
 query GetJob($id: ID!) {
   marketplaceJob(id: $id) {
@@ -425,6 +467,7 @@ query GetJob($id: ID!) {
 ```
 
 #### List all my jobs
+
 ```graphql
 query MyJobs($filters: JobsFilterInput) {
   myMarketplaceJobs(filters: $filters) {
@@ -459,7 +502,9 @@ query MyJobs($filters: JobsFilterInput) {
   }
 }
 ```
+
 **Filter by status:**
+
 ```json
 {
   "filters": {
@@ -469,6 +514,7 @@ query MyJobs($filters: JobsFilterInput) {
   }
 }
 ```
+
 > Omit `status` to get all jobs.
 
 ---
@@ -476,6 +522,7 @@ query MyJobs($filters: JobsFilterInput) {
 ### Step 7 — Show OTP to Contractor
 
 OTPs are **auto-generated by the backend** — consumer does not request them:
+
 - **START OTP** → generated automatically when contractor accepts the job. Consumer sees it immediately in their app and receives it via SMS.
 - **COMPLETE OTP** → generated automatically when the job moves to `STARTED`. Consumer sees it in their app and receives it via SMS.
 
@@ -494,6 +541,7 @@ query ActiveOtp($jobId: ID!) {
   }
 }
 ```
+
 **Input:** `{ "jobId": "<job-uuid>" }`
 
 > **When job is `ACCEPTED`:** shows the START OTP — display it prominently so consumer can tell contractor when they arrive.  
@@ -503,7 +551,7 @@ query ActiveOtp($jobId: ID!) {
 
 ---
 
-### Step 8 — Cancel Job *(before STARTED)*
+### Step 8 — Cancel Job _(before STARTED)_
 
 ```graphql
 mutation CancelJob($input: CancelJobInput!) {
@@ -515,7 +563,9 @@ mutation CancelJob($input: CancelJobInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -524,12 +574,13 @@ mutation CancelJob($input: CancelJobInput!) {
   }
 }
 ```
+
 > Allowed only when job is in `PAYMENT_PENDING`, `REQUESTED`, or `ACCEPTED` status.  
 > Cannot cancel once job is `STARTED`.
 
 ---
 
-### Step 9 — Rate Contractor *(after COMPLETED)*
+### Step 9 — Rate Contractor _(after COMPLETED)_
 
 ```graphql
 mutation RateContractor($input: CreateRatingInput!) {
@@ -542,7 +593,9 @@ mutation RateContractor($input: CreateRatingInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -552,6 +605,7 @@ mutation RateContractor($input: CreateRatingInput!) {
   }
 }
 ```
+
 > Only allowed when job is `COMPLETED`.  
 > After consumer rates → job moves to `CLOSED`.  
 > Rating is 1–5. Comment optional (max 500 chars).
@@ -579,16 +633,17 @@ mutation RateContractor($input: CreateRatingInput!) {
 
 ---
 
-### Admin Setup for a Contractor *(one-time — Admin creates the profile only)*
+### Admin Setup for a Contractor _(one-time — Admin creates the profile only)_
 
 > These mutations require **ADMIN** or **SUPER_ADMIN** role.
 
 #### Create Marketplace Profile
+
 ```graphql
 mutation {
-  createContractorMarketplaceProfile(input: {
-    contractorId: "<contractor-uuid>"
-  }) {
+  createContractorMarketplaceProfile(
+    input: { contractorId: "<contractor-uuid>" }
+  ) {
     id
     contractorId
     subscriptionType
@@ -601,11 +656,12 @@ mutation {
 
 ---
 
-### Contractor Self-Service: Coverage Areas *(PREMIUM only)*
+### Contractor Self-Service: Coverage Areas _(PREMIUM only)_
 
 After upgrading to PREMIUM, the contractor selects the geographic areas they want to serve. This is what makes them appear in consumer searches.
 
 #### Rules
+
 - **State-level selection is not allowed** — must select at district level or below
 - **DISTRICT** → covers all consumers in that district
 - **SUB_DISTRICT** → covers all consumers in that taluk/block
@@ -614,6 +670,7 @@ After upgrading to PREMIUM, the contractor selects the geographic areas they wan
 - Each save **replaces** the entire selection
 
 #### Get current coverage areas
+
 ```graphql
 query {
   myContractorCoverageAreas {
@@ -626,12 +683,14 @@ query {
   }
 }
 ```
+
 > **Role:** `CONTRACTOR`  
 > Returns the contractor's current selections. Empty array = not set yet.
 
 ---
 
 #### Set / update coverage areas
+
 ```graphql
 mutation UpdateCoverageAreas($input: UpdateCoverageAreasInput!) {
   updateMyContractorCoverageAreas(input: $input) {
@@ -640,7 +699,9 @@ mutation UpdateCoverageAreas($input: UpdateCoverageAreasInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -664,6 +725,13 @@ mutation UpdateCoverageAreas($input: UpdateCoverageAreasInput!) {
   }
 }
 ```
+
+> **Role:** `CONTRACTOR` — uses JWT, contractor can only update their own  
+> **PREMIUM required** — throws `FORBIDDEN` if subscription is FREE  
+> `referenceCode` for DISTRICT = `districtCode` from `marketplaceDistricts`; for SUB_DISTRICT = `subDistrictCode` from `marketplaceSubDistricts`; for VILLAGE = village `id` UUID from `marketplaceVillages`  
+> `displayName` is a human-readable label stored for display — build it as `"<name>, <parent name>"`  
+> Send **all** desired selections in one call — **replaces** entirely
+
 > **Role:** `CONTRACTOR` — uses JWT, contractor can only update their own  
 > **PREMIUM required** — throws `FORBIDDEN` if subscription is FREE  
 > `referenceCode` for DISTRICT = `districtCode` from `marketplaceDistricts`; for SUB_DISTRICT = `subDistrictCode` from `marketplaceSubDistricts`; for VILLAGE = village `id` UUID from `marketplaceVillages`  
@@ -679,6 +747,7 @@ mutation UpdateCoverageAreas($input: UpdateCoverageAreasInput!) {
 After Admin creates the profile, the **contractor selects which services they offer** from the Admin-created service catalogue. Works for both FREE and PREMIUM.
 
 #### Step 1 — Fetch all available services (browse what Admin has created)
+
 ```graphql
 query {
   marketplaceServicesByCategory(areaType: URBAN) {
@@ -700,9 +769,11 @@ query {
   }
 }
 ```
+
 > Use any `areaType` here — just to browse the catalogue. The `id` is what you need.
 
 #### Step 2 — Save selected services
+
 ```graphql
 mutation {
   updateMyContractorServices(
@@ -713,6 +784,7 @@ mutation {
   }
 }
 ```
+
 > **Role:** `CONTRACTOR` (uses JWT — contractor can only update their own).  
 > **Replaces** the full selection — send all desired service IDs each time.  
 > Validates that every ID is an active service. Invalid IDs → `BAD_REQUEST`.  
@@ -758,7 +830,9 @@ query MyContractorJobs($filters: JobsFilterInput) {
   }
 }
 ```
+
 **Filter only pending (action required):**
+
 ```json
 { "filters": { "status": "REQUESTED", "page": 1, "limit": 20 } }
 ```
@@ -781,11 +855,15 @@ mutation AcceptJob($input: AcceptJobInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 { "input": { "jobId": "<job-uuid>" } }
 ```
+
 **Validations (backend):**
+
 - Job must be in `REQUESTED` status
 - Job must be assigned to this contractor
 - `acceptanceDeadline` must not have passed
@@ -807,7 +885,9 @@ mutation RejectJob($input: RejectJobInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -816,14 +896,16 @@ mutation RejectJob($input: RejectJobInput!) {
   }
 }
 ```
+
 > `reason` is required.  
 > Job → `REJECTED`. Auto-refund to consumer will be triggered (TODO: when Cashfree integrated).
 
 ---
 
-### Step 3 — Enter Start OTP *(ask consumer for the code when you arrive)*
+### Step 3 — Enter Start OTP _(ask consumer for the code when you arrive)_
 
 When the contractor **accepts** the job, the backend **automatically generates a START OTP** and:
+
 - Sends it to the consumer via SMS
 - Makes it visible in the consumer's app
 
@@ -840,7 +922,9 @@ mutation VerifyStartOtp($input: VerifyMarketplaceOtpInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -849,6 +933,7 @@ mutation VerifyStartOtp($input: VerifyMarketplaceOtpInput!) {
   }
 }
 ```
+
 > Job must be in `ACCEPTED` status.  
 > Wrong code → `BadRequestException: Invalid OTP`.  
 > After 3 failed attempts → `BadRequestException: Max OTP attempts reached` → use Resend OTP below.  
@@ -856,9 +941,10 @@ mutation VerifyStartOtp($input: VerifyMarketplaceOtpInput!) {
 
 ---
 
-### Step 4 — Enter Completion OTP *(ask consumer for the code when work is done)*
+### Step 4 — Enter Completion OTP _(ask consumer for the code when work is done)_
 
 When the job transitions to `STARTED`, the backend **automatically generates a COMPLETE OTP** and:
+
 - Sends it to the consumer via SMS
 - Makes it visible in the consumer's app
 
@@ -874,7 +960,9 @@ mutation VerifyCompleteOtp($input: VerifyMarketplaceOtpInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -883,12 +971,13 @@ mutation VerifyCompleteOtp($input: VerifyMarketplaceOtpInput!) {
   }
 }
 ```
+
 > Job must be in `STARTED` status.  
 > On success: Job → `COMPLETED`. Contractor's `totalJobsCompleted` count incremented.
 
 ---
 
-### Resend OTP *(fallback — only if consumer didn't receive SMS or OTP expired)*
+### Resend OTP _(fallback — only if consumer didn't receive SMS or OTP expired)_
 
 Under normal flow this is **never needed**. Use only if the consumer lost the OTP.
 
@@ -904,21 +993,24 @@ mutation ResendOtp($input: GenerateOtpInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
     "jobId": "<job-uuid>",
-    "otpType": "START_JOB"   // or "COMPLETE_JOB"
+    "otpType": "START_JOB" // or "COMPLETE_JOB"
   }
 }
 ```
+
 > Generates a fresh OTP valid for **15 minutes**, sends new SMS to consumer.  
 > Previous OTP is superseded (the latest active OTP is always used for verification).
 
 ---
 
-### Step 5 — Rate Consumer *(optional, after COMPLETED)*
+### Step 5 — Rate Consumer _(optional, after COMPLETED)_
 
 ```graphql
 mutation RateConsumer($input: CreateRatingInput!) {
@@ -931,7 +1023,9 @@ mutation RateConsumer($input: CreateRatingInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -947,6 +1041,7 @@ mutation RateConsumer($input: CreateRatingInput!) {
 ### Subscription Management
 
 #### View Plans
+
 ```graphql
 query SubscriptionPlans {
   subscriptionPlans {
@@ -959,15 +1054,17 @@ query SubscriptionPlans {
   }
 }
 ```
-| Plan | Months | Price | Discount | Final |
-|------|--------|-------|----------|-------|
-| MONTHLY | 1 | ₹499 | 0% | ₹499 |
-| QUARTERLY | 3 | ₹1,497 | 10% | ₹1,347 |
-| YEARLY | 12 | ₹5,988 | 25% | ₹4,491 |
+
+| Plan      | Months | Price  | Discount | Final  |
+| --------- | ------ | ------ | -------- | ------ |
+| MONTHLY   | 1      | ₹499   | 0%       | ₹499   |
+| QUARTERLY | 3      | ₹1,497 | 10%      | ₹1,347 |
+| YEARLY    | 12     | ₹5,988 | 25%      | ₹4,491 |
 
 ---
 
 #### Check Current Status
+
 ```graphql
 query MySubscription {
   mySubscriptionStatus {
@@ -984,6 +1081,7 @@ query MySubscription {
 ---
 
 #### Initiate Upgrade
+
 ```graphql
 mutation InitiateUpgrade($input: InitiateSubscriptionUpgradeInput!) {
   initiateSubscriptionUpgrade(input: $input) {
@@ -1001,15 +1099,24 @@ mutation InitiateUpgrade($input: InitiateSubscriptionUpgradeInput!) {
   }
 }
 ```
+
+}
+
+````
 **Input:**
 ```json
 {
   "input": {
-    "contractorId": "<contractor-uuid>",
-    "duration": "MONTHLY"
+    "duration": "MONTHLY",
+    "bankAccount": {
+      "accountNumber": "123456789",
+      "ifscCode": "SBIN0001234",
+      "accountHolderName": "John Doe"
+    }
   }
 }
-```
+````
+
 **Save:** `paymentIntent.id` — needed for the confirm step.
 
 > `paymentLink` is currently a mock URL (Cashfree not yet integrated).  
@@ -1019,6 +1126,7 @@ mutation InitiateUpgrade($input: InitiateSubscriptionUpgradeInput!) {
 ---
 
 #### Confirm Payment
+
 ```graphql
 mutation ConfirmSubscription($input: ConfirmSubscriptionPaymentInput!) {
   confirmSubscriptionPayment(input: $input) {
@@ -1029,7 +1137,9 @@ mutation ConfirmSubscription($input: ConfirmSubscriptionPaymentInput!) {
   }
 }
 ```
+
 **Input:**
+
 ```json
 {
   "input": {
@@ -1038,6 +1148,7 @@ mutation ConfirmSubscription($input: ConfirmSubscriptionPaymentInput!) {
   }
 }
 ```
+
 > `paymentReference` is optional — will be the Cashfree order ID when integrated.
 
 ---
@@ -1047,14 +1158,14 @@ mutation ConfirmSubscription($input: ConfirmSubscriptionPaymentInput!) {
 Since the payment gateway is not live yet, use this 2-step flow to upgrade without real payment:
 
 **Step 1 — Initiate:**
+
 ```graphql
 mutation {
-  initiateSubscriptionUpgrade(input: {
-    contractorId: "<contractor-uuid>",
-    duration: MONTHLY
-  }) {
+  initiateSubscriptionUpgrade(
+    input: { contractorId: "<contractor-uuid>", duration: MONTHLY }
+  ) {
     paymentIntent {
-      id        # ← save this
+      id # ← save this
       amount
       expiresAt
     }
@@ -1063,11 +1174,10 @@ mutation {
 ```
 
 **Step 2 — Confirm immediately** (skip the payment URL entirely):
+
 ```graphql
 mutation {
-  confirmSubscriptionPayment(input: {
-    paymentIntentId: "<id from step 1>"
-  }) {
+  confirmSubscriptionPayment(input: { paymentIntentId: "<id from step 1>" }) {
     success
     newSubscriptionType
     validTill
@@ -1080,6 +1190,7 @@ mutation {
 ---
 
 #### View Subscription History
+
 ```graphql
 query SubHistory {
   mySubscriptionHistory {
@@ -1098,17 +1209,18 @@ query SubHistory {
 
 #### ⚠️ Production TODOs (Subscription)
 
-| # | Issue | Where | What needs to be done |
-|---|-------|--------|-----------------------|
-| 1 | Payment intents stored **in-memory** | `subscriptions.service.ts` — `paymentIntents Map` | Move to a DB table or Redis so intents survive server restarts |
-| 2 | `paymentLink` is a **mock URL** | `initiateUpgrade()` — hardcoded `https://payments.example.com/...` | Replace with real Cashfree Order API call to get a live checkout URL |
-| 3 | `confirmSubscriptionPayment` callable by **app directly** | `subscriptions.resolver.ts` | In production, confirmation must only happen via Cashfree **webhook** (after verifying signature) — never trust the app to self-confirm |
+| #   | Issue                                                     | Where                                                              | What needs to be done                                                                                                                   |
+| --- | --------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Payment intents stored **in-memory**                      | `subscriptions.service.ts` — `paymentIntents Map`                  | Move to a DB table or Redis so intents survive server restarts                                                                          |
+| 2   | `paymentLink` is a **mock URL**                           | `initiateUpgrade()` — hardcoded `https://payments.example.com/...` | Replace with real Cashfree Order API call to get a live checkout URL                                                                    |
+| 3   | `confirmSubscriptionPayment` callable by **app directly** | `subscriptions.resolver.ts`                                        | In production, confirmation must only happen via Cashfree **webhook** (after verifying signature) — never trust the app to self-confirm |
 
 ---
 
 ## 4. Shared APIs
 
 ### Get Job by ID (works for both consumer and contractor)
+
 ```graphql
 query GetJob($id: ID!) {
   marketplaceJob(id: $id) {
@@ -1127,6 +1239,7 @@ query GetJob($id: ID!) {
     acceptanceDeadline
     startDeadline
     completionDeadline
+    hasRated
     createdAt
     paidAt
     acceptedAt
@@ -1143,6 +1256,7 @@ query GetJob($id: ID!) {
 ---
 
 ### Rating Summary for any user
+
 ```graphql
 query RatingSummary($userId: ID!) {
   marketplaceRatingSummary(userId: $userId) {
@@ -1162,97 +1276,104 @@ query RatingSummary($userId: ID!) {
 ## 5. Enums Reference
 
 ### MarketplaceJobStatus
-| Value | Meaning |
-|-------|---------|
-| `PAYMENT_PENDING` | Job created, payment not done yet |
-| `REQUESTED` | Payment done, waiting for contractor to accept |
-| `ACCEPTED` | Contractor accepted, waiting for job to start |
-| `REJECTED` | Contractor rejected → refund triggered |
-| `STARTED` | Start OTP verified, work in progress |
-| `COMPLETED` | Completion OTP verified, work done |
-| `CLOSED` | Consumer rated → fully closed |
-| `CANCELLED` | Consumer cancelled |
-| `SLA_BREACH` | SLA deadline missed (set by scheduler) |
+
+| Value             | Meaning                                        |
+| ----------------- | ---------------------------------------------- |
+| `PAYMENT_PENDING` | Job created, payment not done yet              |
+| `REQUESTED`       | Payment done, waiting for contractor to accept |
+| `ACCEPTED`        | Contractor accepted, waiting for job to start  |
+| `REJECTED`        | Contractor rejected → refund triggered         |
+| `STARTED`         | Start OTP verified, work in progress           |
+| `COMPLETED`       | Completion OTP verified, work done             |
+| `CLOSED`          | Consumer rated → fully closed                  |
+| `CANCELLED`       | Consumer cancelled                             |
+| `SLA_BREACH`      | SLA deadline missed (set by scheduler)         |
 
 ### MarketplaceOtpType
-| Value | When to use |
-|-------|-------------|
-| `START_JOB` | Contractor arrives at site, job is `ACCEPTED` |
-| `COMPLETE_JOB` | Work is done, job is `STARTED` |
+
+| Value          | When to use                                   |
+| -------------- | --------------------------------------------- |
+| `START_JOB`    | Contractor arrives at site, job is `ACCEPTED` |
+| `COMPLETE_JOB` | Work is done, job is `STARTED`                |
 
 ### MarketplaceAreaType
-| Value | Meaning |
-|-------|---------|
-| `URBAN` | Urban area — typically higher price |
-| `SEMI_URBAN` | Semi-urban area — mid price |
-| `RURAL` | Rural area — lower price |
+
+| Value        | Meaning                             |
+| ------------ | ----------------------------------- |
+| `URBAN`      | Urban area — typically higher price |
+| `SEMI_URBAN` | Semi-urban area — mid price         |
+| `RURAL`      | Rural area — lower price            |
 
 ### CoverageSelectionType
-| Value | `referenceCode` field | Meaning |
-|-------|-----------------------|---------|
-| `DISTRICT` | `districtCode` (e.g. `"572"`) | Contractor covers all consumers in the entire district |
-| `SUB_DISTRICT` | `subDistrictCode` (e.g. `"5720001"`) | Contractor covers all consumers in that taluk/block |
-| `VILLAGE` | village `id` UUID | Contractor covers only that specific village |
+
+| Value          | `referenceCode` field                | Meaning                                                |
+| -------------- | ------------------------------------ | ------------------------------------------------------ |
+| `DISTRICT`     | `districtCode` (e.g. `"572"`)        | Contractor covers all consumers in the entire district |
+| `SUB_DISTRICT` | `subDistrictCode` (e.g. `"5720001"`) | Contractor covers all consumers in that taluk/block    |
+| `VILLAGE`      | village `id` UUID                    | Contractor covers only that specific village           |
 
 > **State-level is intentionally unsupported.** Contractors must select at district level or below.
 
 ---
 
 ### SubscriptionType
-| Value | Meaning |
-|-------|---------|
-| `FREE` | Cannot set coverage areas; does NOT appear in consumer searches |
+
+| Value     | Meaning                                                           |
+| --------- | ----------------------------------------------------------------- |
+| `FREE`    | Cannot set coverage areas; does NOT appear in consumer searches   |
 | `PREMIUM` | Can set coverage areas and services; appears in consumer searches |
 
 ### SubscriptionDuration
-| Value | Months |
-|-------|--------|
-| `MONTHLY` | 1 |
-| `QUARTERLY` | 3 |
-| `YEARLY` | 12 |
+
+| Value       | Months |
+| ----------- | ------ |
+| `MONTHLY`   | 1      |
+| `QUARTERLY` | 3      |
+| `YEARLY`    | 12     |
 
 ### LoginType
-| Value | Who uses it |
-|-------|-------------|
-| `CONSUMER` | Consumer app login |
-| `CONTRACTOR` | Contractor app login |
-| `ADMIN` | Admin web portal |
-| `RETAIL_OUTLET` | RO web portal |
+
+| Value           | Who uses it          |
+| --------------- | -------------------- |
+| `CONSUMER`      | Consumer app login   |
+| `CONTRACTOR`    | Contractor app login |
+| `ADMIN`         | Admin web portal     |
+| `RETAIL_OUTLET` | RO web portal        |
 
 ---
 
 ## 6. Error Codes
 
-| HTTP/GraphQL Error | Message | What to do |
-|--------------------|---------|------------|
-| `401 Unauthorized` | Token missing/expired | Re-login |
-| `403 Forbidden` | Wrong role for this operation | Check loginType |
-| `NOT_FOUND` | Job/Service/Contractor not found | Invalid ID |
-| `BAD_REQUEST: Job cannot be accepted in current status` | Wrong job state | Refresh job and check status |
-| `BAD_REQUEST: Location not found or not classified` | Village not classified yet | Admin must classify the village |
-| `BAD_REQUEST: No pricing configured` | No price for service+area | Admin must set pricing |
-| `BAD_REQUEST: No SLA configured` | No SLA for service+area | Admin must set SLA |
-| `BAD_REQUEST: No valid OTP found` | OTP expired or already used | Generate a new OTP |
-| `BAD_REQUEST: Invalid OTP` | Wrong code entered | Try again (max 3 attempts) |
-| `BAD_REQUEST: Max OTP attempts reached` | 3 wrong attempts | Generate a new OTP |
-| `BAD_REQUEST: Acceptance deadline has passed` | Too late to accept | Job will be marked SLA_BREACH |
-| `FORBIDDEN: You are not assigned to this job` | Wrong contractor | Check job assignment |
-| `FORBIDDEN: Coverage area management requires a PREMIUM subscription` | Contractor is FREE | Upgrade to PREMIUM first, then set coverage areas |
+| HTTP/GraphQL Error                                                    | Message                          | What to do                                        |
+| --------------------------------------------------------------------- | -------------------------------- | ------------------------------------------------- |
+| `401 Unauthorized`                                                    | Token missing/expired            | Re-login                                          |
+| `403 Forbidden`                                                       | Wrong role for this operation    | Check loginType                                   |
+| `NOT_FOUND`                                                           | Job/Service/Contractor not found | Invalid ID                                        |
+| `BAD_REQUEST: Job cannot be accepted in current status`               | Wrong job state                  | Refresh job and check status                      |
+| `BAD_REQUEST: Location not found or not classified`                   | Village not classified yet       | Admin must classify the village                   |
+| `BAD_REQUEST: No pricing configured`                                  | No price for service+area        | Admin must set pricing                            |
+| `BAD_REQUEST: No SLA configured`                                      | No SLA for service+area          | Admin must set SLA                                |
+| `BAD_REQUEST: No valid OTP found`                                     | OTP expired or already used      | Generate a new OTP                                |
+| `BAD_REQUEST: Invalid OTP`                                            | Wrong code entered               | Try again (max 3 attempts)                        |
+| `BAD_REQUEST: Max OTP attempts reached`                               | 3 wrong attempts                 | Generate a new OTP                                |
+| `BAD_REQUEST: Acceptance deadline has passed`                         | Too late to accept               | Job will be marked SLA_BREACH                     |
+| `FORBIDDEN: You are not assigned to this job`                         | Wrong contractor                 | Check job assignment                              |
+| `FORBIDDEN: Coverage area management requires a PREMIUM subscription` | Contractor is FREE               | Upgrade to PREMIUM first, then set coverage areas |
 
 ---
 
 ## 7. Where Each ID Comes From
 
-| ID | What it is | Where you get it |
-|----|------------|-----------------|
-| `locationId` | Village UUID | `marketplaceVillages` → `id` |
-| `serviceId` | Service UUID | `marketplaceServicesByCategory` or `marketplaceServicesWithPrices` → `id` |
-| `contractorId` | Contractor UUID | `searchMarketplaceContractors` → `contractorId` |
-| `jobId` | Job UUID | `createMarketplaceJob` → `jobId`, or `myMarketplaceJobs` → `id` |
-| `areaType` | URBAN/SEMI_URBAN/RURAL | `marketplaceVillages` → `areaType` (from selected village) |
-| `districtCode` (for coverage) | District reference code | `marketplaceDistricts` → `code` |
-| `subDistrictCode` (for coverage) | Sub-district reference code | `marketplaceSubDistricts` → `code` |
-| `villageId` (for coverage) | Village UUID | `marketplaceVillages` → `id` |
+| ID                               | What it is                  | Where you get it                                                          |
+| -------------------------------- | --------------------------- | ------------------------------------------------------------------------- |
+| `locationId`                     | Village UUID                | `marketplaceVillages` → `id`                                              |
+| `serviceId`                      | Service UUID                | `marketplaceServicesByCategory` or `marketplaceServicesWithPrices` → `id` |
+| `contractorId`                   | Contractor UUID             | `searchMarketplaceContractors` → `contractorId`                           |
+| `jobId`                          | Job UUID                    | `createMarketplaceJob` → `jobId`, or `myMarketplaceJobs` → `id`           |
+| `areaType`                       | URBAN/SEMI_URBAN/RURAL      | `marketplaceVillages` → `areaType` (from selected village)                |
+| `districtCode` (for coverage)    | District reference code     | `marketplaceDistricts` → `code`                                           |
+| `subDistrictCode` (for coverage) | Sub-district reference code | `marketplaceSubDistricts` → `code`                                        |
+| `villageId` (for coverage)       | Village UUID                | `marketplaceVillages` → `id`                                              |
 
 ---
 
@@ -1298,14 +1419,14 @@ Any active state ──► SLA_BREACH (set by backend scheduler if deadlines mis
 
 When a job is created, three deadlines are calculated and **locked forever**:
 
-| Deadline | Set at | Formula |
-|----------|--------|---------|
-| `acceptanceDeadline` | Job creation | now + `SLA.acceptanceHours` |
-| `startDeadline` | Contractor accepts | acceptedAt + `SLA.jobStartHours` |
+| Deadline             | Set at             | Formula                           |
+| -------------------- | ------------------ | --------------------------------- |
+| `acceptanceDeadline` | Job creation       | now + `SLA.acceptanceHours`       |
+| `startDeadline`      | Contractor accepts | acceptedAt + `SLA.jobStartHours`  |
 | `completionDeadline` | Start OTP verified | startedAt + `SLA.completionHours` |
 
 Show countdown timers in the app for active deadlines. When a deadline is within 20% of total time remaining, show a warning.
 
 ---
 
-*This document reflects the actual implemented backend resolvers and services as of 26 February 2026.*
+_This document reflects the actual implemented backend resolvers and services as of 26 February 2026._

@@ -1,8 +1,43 @@
 # Session Changes Log
 
-**Last Updated:** 02 March 2026
+**Last Updated:** 03 March 2026
 
 This document tracks all changes made during development sessions. Update this file as changes are made.
+
+---
+
+## Session: 03 March 2026 - LGD Import & Admin Search Sync
+
+### 1. English Header Parsing for LGD Excel (Backend)
+
+**Problem:** The Location Master import skipped district and sub-district names if the Excel headers were explicitly formatted as "District Name (In English)", inserting blank values into the database.
+**Fix:** Appended direct extraction fallbacks for `row['District Name (In English)']` and `row['Sub-District Name (In English)']` within `imports.resolver.ts` to seamlessly populate the database fields. Because of the `ON CONFLICT DO UPDATE` bulk upsert implementation, admins can safely re-upload the same file to instantly patch all previously blank names without duplication.
+
+### 2. Location Matrix Search Functionality (Frontend)
+
+**Problem:** Admins had to manually scroll through thousands of active villages, districts, and sub-districts inside the Marketplace Locations dashboard.
+**Fix:** Injected `useState` search constraints and active filter mapping directly into the `AdminLocationsPage` component. Added dedicated `Search` input blocks above the Districts, Sub-Districts, and Villages columns for real-time client-side filtering.
+
+---
+
+## Session: 03 March 2026 - Marketplace Rating & Job Status Fixes
+
+### 1. `hasRated` Field Resolution (Backend)
+
+**Problem:** Consumers received `null` and contractors received `false` for the `hasRated` property on marketplace jobs, breaking the frontend ability to properly lock rating forms on completed services.
+**Fix:**
+
+- Re-architected `getContractorJobs` and `getConsumerJobs` to utilize Drizzle ORM's `inArray` method instead of postgres raw `sql.ANY`.
+- Updated `jobs.resolver.ts` to explicitly surface the authenticated `userId` as `raterUserId` inside consumer job fetches.
+
+### 2. Frontend Rating Lockout & Codegen Readiness
+
+**Problem:** "Rate Contractor" blocks were eternally accessible on `COMPLETED`/`CLOSED` jobs.
+**Fix:** Added `hasRated?: boolean` to the `MarketplaceJob` hook interfaces and expanded the `MarketplaceJobFields` GraphQL query fragment. Implemented `!job.hasRated` checks directly on the `canRate` validation booleans in both consumer and contractor detail pages to disable secondary ratings natively in the UI.
+
+### 3. Lifecycle Status Documentation
+
+**Clarification:** Validated the state pipeline: `COMPLETED` is triggered by contractor OTP validation. `CLOSED` is strictly achieved only when the Consumer subsequently rates the job. Created a dedicated document (`job_statuses_explanation.md`) outlining state triggers to resolve UI anomaly concerns.
 
 ---
 

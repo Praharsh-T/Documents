@@ -2,7 +2,7 @@
 
 **For:** Consumer App & Contractor App  
 **Backend:** `user-service` (NestJS GraphQL)  
-**Last Updated:** 27 February 2026  
+**Last Updated:** 03 March 2026  
 **Base GraphQL URL:** `https://connectshakti.klonec.cloud/graphql`  
 **Auth:** All requests need `Authorization: Bearer <jwt_token>` header
 

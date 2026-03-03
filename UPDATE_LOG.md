@@ -1,6 +1,45 @@
 # MESCOM Smart Meter System - Update Log
 
-**Last Updated:** 02 March 2026 (Marketplace Redesign & Subscriptions Verification)
+**Last Updated:** 03 March 2026 (LGD Import & Admin Search Sync)
+
+---
+
+## 📋 Latest Session Context (03 March 2026 — LGD Import & Admin Search Sync)
+
+### What Was Done This Session:
+
+#### **1. LGD EXCEL PARSER EXTENSION (Backend)**
+
+- **Issue:** Location master imports were inserting blank strings for district and sub-district names if the Excel file utilized explicit English headers like `District Name (In English)`.
+- **Fix:** Appended robust header fallbacks directly within `imports.resolver.ts` to capture and insert the correct naming conventions without throwing mapping errors. Re-uploading existing sheets now safely patches all historical blank records via the `ON CONFLICT DO UPDATE` DB architecture.
+
+#### **2. LOCATION MATRIX SEARCH (Frontend)**
+
+- **Feature:** Injected a localized `useState` search mechanism into the admin `/marketplace/locations` dashboard.
+- **Implementation:** Added independent Search input bars above the District, Sub-District, and Village data columns, executing real-time client-side array filtering to eliminate manual scrolling across thousands of active state rows.
+
+---
+
+## 📋 Previous Session Context (03 March 2026 — Marketplace Rating & Job Status Fixes)
+
+### What Was Done This Session:
+
+#### **1. `hasRated` LOGIC FIX (Backend)**
+
+- **Issue:** `myMarketplaceJobs` (Consumer) returned `null` for `hasRated` and `myContractorMarketplaceJobs` (Contractor) returned `false` for all jobs due to a Drizzle ORM incompatibility with raw `sql.ANY`.
+- **Fix:** Switched to Drizzle's native `inArray` to query the ratings table safely. Modified the `getConsumerJobs` service to accept `raterUserId` so nested consumer queries successfully resolve the boolean field.
+- **Resolver:** Passed `userId` down to `getConsumerJobs` from the `myMarketplaceJobs` GraphQL block.
+
+#### **2. FRONTEND RATING LOCKOUT**
+
+- **Issue:** Consumers and contractors could attempt to rate jobs multiple times because the front-end `MarketplaceJob` interfaces were missing the `hasRated` parameter, keeping the user interface permanently unlocked.
+- **Fix:** Appended the `hasRated` boolean requirement to the `MarketplaceJobFields` GraphQL fragment. Implemented a `canRate` lock out on both `/consumer/marketplace/jobs/[id]` and `/contractor/marketplace/jobs/[id]` pages, locking the rating functionality if `job.hasRated === true`.
+
+#### **3. CLARIFICATION OF `CLOSED` VS `COMPLETED` STATES**
+
+- Documented and validated the job lifecycle state machine transition parameters.
+- Validated that a `COMPLETED` status is awarded specifically when the Contractor submits the final verification OTP.
+- Validated that a job is only forcefully moved from `COMPLETED` to `CLOSED` after the Consumer successfully submits a Rating.
 
 ---
 

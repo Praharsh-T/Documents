@@ -1,10 +1,64 @@
 # MESCOM Smart Meter System - Update Log
 
-**Last Updated:** 02 March 2026 (Marketplace Redesign & Subscriptions Verification)
+**Last Updated:** 06 March 2026 (Auth Throttle Env-Gating & Ratings Status Rules)
 
 ---
 
-## 📋 Latest Session Context (02 March 2026 — Marketplace Redesign & Plan Versioning)
+## 📋 Latest Session Context (06 March 2026 — Auth Throttle Env-Gating & Ratings Status Rules)
+
+### What Was Done This Session:
+
+#### **1. LOGIN THROTTLE DISABLED IN DEV & STAGING**
+
+- `ThrottleService` now reads `NODE_ENV` at startup via `ConfigService`. In any environment where `NODE_ENV !== 'production'`, `check()` returns immediately (no lock check) and `recordFailure()` returns a no-op response without touching the DB.
+- `ConfigModule` added to `AuthModule` module-level imports so `ConfigService` is injectable into `ThrottleService` via NestJS DI.
+- Production behaviour is fully preserved — `resetOnSuccess` (record cleanup) still runs everywhere.
+
+**Files Changed:**
+
+- `user-service/src/modules/auth/throttle.service.ts`
+- `user-service/src/modules/auth/auth.module.ts`
+
+---
+
+#### **2. MARKETPLACE RATINGS — EXPANDED STATUS RULES**
+
+Old behaviour: `createMarketplaceRating` threw `400 "Can only rate completed jobs"` for any non-`COMPLETED` job.
+
+New behaviour — role-specific status gates:
+
+| Rater                 | Allowed Statuses                     |
+| --------------------- | ------------------------------------ |
+| Consumer → Contractor | `COMPLETED`, `REJECTED`, `CANCELLED` |
+| Contractor → Consumer | `COMPLETED`, `CANCELLED`             |
+
+This enables:
+
+- Consumer rating a contractor who **rejected** their paid job
+- Contractor rating a consumer who **cancelled** after the service started
+- Both parties rating on normal **COMPLETED** jobs (unchanged)
+
+Side-effects preserved:
+
+- Contractor aggregate stats update whenever consumer rates (all allowed statuses)
+- Job auto-close to `CLOSED` only fires on consumer rating a `COMPLETED` job
+
+**File Changed:**
+
+- `user-service/src/modules/marketplace/ratings/ratings.service.ts` — rewrote `createRating()` with role-resolved status gates
+
+---
+
+### ⚠️ Pending / Known Gaps After This Session:
+
+| #   | Action                                                                     | Who       | Blocking?                                                              |
+| --- | -------------------------------------------------------------------------- | --------- | ---------------------------------------------------------------------- |
+| 1   | Investigate `createMarketplaceJob` "request failed" error from mobile app  | Developer | ✅ Yes — root cause unconfirmed (likely `consumers.userId` not linked) |
+| 2   | All previously logged pending items (Cashfree, SMS, Redis payment intents) | Developer | Production                                                             |
+
+---
+
+## 📋 Previous Session Context (02 March 2026 — Marketplace Redesign & Plan Versioning)
 
 ### What Was Done This Session:
 

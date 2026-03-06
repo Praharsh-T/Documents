@@ -1,8 +1,59 @@
 # Session Changes Log
 
-**Last Updated:** 02 March 2026
+**Last Updated:** 06 March 2026
 
 This document tracks all changes made during development sessions. Update this file as changes are made.
+
+---
+
+## Session: 06 March 2026 - Auth Throttle Env-Gating & Ratings Status Rules
+
+### 1. Login Throttle Disabled for Non-Production Environments
+
+**Problem:** Developers and QA testers were hitting lockout windows in the dev and staging environments during rapid iteration, making auth testing painful.
+
+**Fix:** `ThrottleService` now reads `NODE_ENV` via `ConfigService` at startup and sets an `isThrottlingEnabled` flag. All throttle checks and failure recordings are **no-ops** in every environment except `production`.
+
+**Files Changed:**
+
+- `user-service/src/modules/auth/throttle.service.ts` — injected `ConfigService`, added `isThrottlingEnabled` guard in `check()` and `recordFailure()`
+- `user-service/src/modules/auth/auth.module.ts` — added `ConfigModule` to module-level `imports` array so `ConfigService` is DI-resolvable inside `ThrottleService`
+
+**Behaviour by environment:**
+
+| Environment | `NODE_ENV`    | Throttling  |
+| ----------- | ------------- | ----------- |
+| Local dev   | `development` | ✅ Disabled |
+| Staging     | `staging`     | ✅ Disabled |
+| Production  | `production`  | ✅ Enforced |
+
+> `resetOnSuccess` (DB cleanup on successful login) still runs in all environments — it is harmless and keeps the table clean.
+
+---
+
+### 2. Marketplace Ratings — Expanded Status Rules
+
+**Problem:** The `createMarketplaceRating` mutation rejected any rating attempt on a non-`COMPLETED` job with `"Can only rate completed jobs"`, blocking legitimate rating scenarios:
+
+- Consumer cannot rate a contractor who **rejected** their job after payment
+- Contractor cannot rate a consumer who **cancelled** after the contractor accepted
+- Neither party can rate when a job is cancelled **after the service has started**
+
+**Fix:** Replaced the blanket `COMPLETED` gate with role-specific status checks:
+
+| Rater                 | Allowed Job Statuses                 |
+| --------------------- | ------------------------------------ |
+| Consumer → Contractor | `COMPLETED`, `REJECTED`, `CANCELLED` |
+| Contractor → Consumer | `COMPLETED`, `CANCELLED`             |
+
+**Side-effect rules (unchanged behaviour):**
+
+- Contractor aggregate stats (`ratingAvg`, `totalRatings`) updated whenever a **consumer** rates (any allowed status)
+- Job auto-close to `CLOSED` only fires when consumer rates a `COMPLETED` job (terminal states like `REJECTED`/`CANCELLED` are already final)
+
+**File Changed:**
+
+- `user-service/src/modules/marketplace/ratings/ratings.service.ts` — rewrote `createRating()` to resolve caller role first (consumer vs contractor), then apply the correct status gate before resolving `raterUserId`/`rateeUserId`
 
 ---
 

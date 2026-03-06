@@ -2,7 +2,7 @@
 
 **For:** Consumer App & Contractor App  
 **Backend:** `user-service` (NestJS GraphQL)  
-**Last Updated:** 27 February 2026  
+**Last Updated:** 03 March 2026  
 **Base GraphQL URL:** `https://connectshakti.klonec.cloud/graphql`  
 **Auth:** All requests need `Authorization: Bearer <jwt_token>` header
 
@@ -725,6 +725,17 @@ mutation UpdateCoverageAreas($input: UpdateCoverageAreasInput!) {
   }
 }
 ```
+> **Role:** `CONTRACTOR` — uses JWT, contractor can only update their own  
+> **PREMIUM required** — throws `FORBIDDEN` if subscription is FREE  
+> `referenceCode` for DISTRICT = `districtCode` from `marketplaceDistricts`; for SUB_DISTRICT = `subDistrictCode` from `marketplaceSubDistricts`; for VILLAGE = village `id` UUID from `marketplaceVillages`  
+> `displayName` is a human-readable label stored for display — build it as `"<name>, <parent name>"`  
+> Send **all** desired selections in one call — **replaces** entirely
+
+> **Role:** `CONTRACTOR` — uses JWT, contractor can only update their own  
+> **PREMIUM required** — throws `FORBIDDEN` if subscription is FREE  
+> `referenceCode` for DISTRICT = `districtCode` from `marketplaceDistricts`; for SUB_DISTRICT = `subDistrictCode` from `marketplaceSubDistricts`; for VILLAGE = village `id` UUID from `marketplaceVillages`  
+> `displayName` is a human-readable label stored for display — build it as `"<name>, <parent name>"`  
+> Send **all** desired selections in one call — **replaces** entirely
 
 > **Role:** `CONTRACTOR` — uses JWT, contractor can only update their own  
 > **PREMIUM required** — throws `FORBIDDEN` if subscription is FREE  

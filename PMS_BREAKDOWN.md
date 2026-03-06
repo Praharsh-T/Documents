@@ -6,7 +6,13 @@
 
 ---
 
-## Epic 0 — Recent Additions (Marketplace Hub & Subscriptions)
+## Epic 0 — Recent Additions (Location Dashboard & Core System Hub)
+
+### Capability 0.0 — LGD Import Resilience & Location Search
+
+- **Data Parsing**: Extended the Excel parser within the `user-service` to dynamically handle explicit LGD naming conventions (e.g., "District Name (In English)").
+- **Admin Utilities**: Injected real-time multi-column search capabilities into the Marketplace Locations dashboard for Districts, Sub-Districts, and Villages.
+- **Query Optimization**: Implemented `DISTINCT ON` rules to the District and Sub-District location queries within `locations.service.ts` to strictly safeguard the frontend against listing UI duplications.
 
 ### Capability 0.1 — Subscription Plan Versioning
 
@@ -488,6 +494,8 @@
 | Layer        | Tasks                                                                                            |
 | ------------ | ------------------------------------------------------------------------------------------------ |
 | **Backend**  | Implement `createMarketplaceRating` mutation with star rating and review text for completed jobs |
+|              | Implement `hasRated` boolean resolution across job arrays using `inArray` queries                |
+|              | Enforce state machine transition: Consumer Rating forces job from `COMPLETED` → `CLOSED`         |
 |              | Implement `marketplaceRatings` query (Admin) with pagination and filters                         |
 |              | Implement `marketplaceRatingSummary` query — aggregated rating stats per contractor              |
 |              | Implement `marketplaceContractorReviews` query — paginated reviews for a contractor              |

@@ -1,6 +1,72 @@
 # MESCOM Smart Meter System - Update Log
 
-**Last Updated:** 27 February 2026 (Marketplace Flow Testing, Search Debugging & Job Lifecycle)
+**Last Updated:** 03 March 2026 (LGD Import & Admin Search Sync)
+
+---
+
+## 📋 Latest Session Context (03 March 2026 — LGD Import & Admin Search Sync)
+
+### What Was Done This Session:
+
+#### **1. LGD EXCEL PARSER EXTENSION (Backend)**
+
+- **Issue:** Location master imports were inserting blank strings for district and sub-district names if the Excel file utilized explicit English headers like `District Name (In English)`.
+- **Fix:** Appended robust header fallbacks directly within `imports.resolver.ts` to capture and insert the correct naming conventions without throwing mapping errors. Re-uploading existing sheets now safely patches all historical blank records via the `ON CONFLICT DO UPDATE` DB architecture.
+
+#### **2. LOCATION MATRIX SEARCH (Frontend)**
+
+- **Feature:** Injected a localized `useState` search mechanism into the admin `/marketplace/locations` dashboard.
+- **Implementation:** Added independent Search input bars above the District, Sub-District, and Village data columns, executing real-time client-side array filtering to eliminate manual scrolling across thousands of active state rows.
+
+---
+
+## 📋 Previous Session Context (03 March 2026 — Marketplace Rating & Job Status Fixes)
+
+### What Was Done This Session:
+
+#### **1. `hasRated` LOGIC FIX (Backend)**
+
+- **Issue:** `myMarketplaceJobs` (Consumer) returned `null` for `hasRated` and `myContractorMarketplaceJobs` (Contractor) returned `false` for all jobs due to a Drizzle ORM incompatibility with raw `sql.ANY`.
+- **Fix:** Switched to Drizzle's native `inArray` to query the ratings table safely. Modified the `getConsumerJobs` service to accept `raterUserId` so nested consumer queries successfully resolve the boolean field.
+- **Resolver:** Passed `userId` down to `getConsumerJobs` from the `myMarketplaceJobs` GraphQL block.
+
+#### **2. FRONTEND RATING LOCKOUT**
+
+- **Issue:** Consumers and contractors could attempt to rate jobs multiple times because the front-end `MarketplaceJob` interfaces were missing the `hasRated` parameter, keeping the user interface permanently unlocked.
+- **Fix:** Appended the `hasRated` boolean requirement to the `MarketplaceJobFields` GraphQL fragment. Implemented a `canRate` lock out on both `/consumer/marketplace/jobs/[id]` and `/contractor/marketplace/jobs/[id]` pages, locking the rating functionality if `job.hasRated === true`.
+
+#### **3. CLARIFICATION OF `CLOSED` VS `COMPLETED` STATES**
+
+- Documented and validated the job lifecycle state machine transition parameters.
+- Validated that a `COMPLETED` status is awarded specifically when the Contractor submits the final verification OTP.
+- Validated that a job is only forcefully moved from `COMPLETED` to `CLOSED` after the Consumer successfully submits a Rating.
+
+---
+
+## 📋 Latest Session Context (02 March 2026 — Marketplace Redesign & Plan Versioning)
+
+### What Was Done This Session:
+
+#### **1. SUBSCRIPTION PLAN VERSIONING**
+
+- Introduced immutable versioning to `SubscriptionPlan` to ensure grandfathered pricing for existing Premium contractors.
+- `updateSubscriptionPlan` now retires old terms and inserts a `version + 1` record.
+- Added a "Log" interface to the Admin Hub to trace the pricing history of Monthly/Quarterly/Yearly plans over time.
+
+#### **2. MARKETPLACE HUB REDESIGN (`/admin/marketplace`)**
+
+- Replaced the confusing flat-grid layout with a structured, step-by-step Setup Flow:
+  1. Locations
+  2. Units of Measurement
+  3. Service Categories
+  4. Services & Pricing
+- Clustered daily-use elements (Jobs, Contractors, SLA Matrices, Global SLA, Subscriptions, Logs) into an "Operations & Rules" section below.
+
+#### **3. INTEGRATED SERVICES & PRICING UI**
+
+- Removed the standalone "Pricing Configuration" router page.
+- Injected `Urban`, `Semi-Urban`, and `Rural` base price inputs directly into the Add/Edit Service form.
+- The UI now sequences `createMarketplaceService` followed synchronously by `bulkSetMarketplacePrices`, enabling single-step catalog creation.
 
 ---
 
@@ -13,8 +79,9 @@
 **Symptom:** Search returned empty results `{ items: [], total: 0 }` even after migration was applied and backend restarted.
 
 **Diagnostic Query Run:**
+
 ```sql
-SELECT 
+SELECT
   mp.contractor_id,
   mp.subscription_type,
   mp.is_marketplace_active,
@@ -26,6 +93,7 @@ JOIN contractors c ON c.id = mp.contractor_id;
 ```
 
 **Result:**
+
 ```
 contractor_id                          subscription_type  is_marketplace_active  is_active  services  coverage_entries
 c9706131-7039-4e61-b598-1890a228feb4   PREMIUM            true                   true       0         2
@@ -58,6 +126,7 @@ marketplaceServicesWithPrices(areaType: URBAN) { id name price }
 ```
 
 **5-condition checklist for a contractor to appear in search:**
+
 1. `mp.is_marketplace_active = true` ✅
 2. `c.is_active = true` ✅
 3. `mp.subscription_type = 'PREMIUM'` ✅ (FREE contractors are permanently excluded)
@@ -70,23 +139,25 @@ marketplaceServicesWithPrices(areaType: URBAN) { id name price }
 
 Complete end-to-end flow verified and documented:
 
-| Step | Mutation | Role | Notes |
-|------|----------|------|-------|
-| 1 | `createMarketplaceJob` | CONSUMER | Creates job in `PAYMENT_PENDING`; requires pricing + SLA configured |
-| 2 | `simulatePaymentSuccess` | Any (DEV ONLY) | Moves `PAYMENT_PENDING → REQUESTED`; replace with Cashfree webhook in prod |
-| 3 | `acceptMarketplaceJob` | CONTRACTOR | Moves to `ACCEPTED`; auto-generates START_JOB OTP; sends OTP to consumer |
-| 3b | `rejectMarketplaceJob` | CONTRACTOR | Moves to `REJECTED`; refund TODO |
-| 4 | `activeJobOtp` | CONSUMER | Query to get current OTP code (since SMS is disabled in dev) |
-| 5 | `verifyMarketplaceOtp` (START_JOB) | CONTRACTOR | Consumer reads OTP → contractor enters → `ACCEPTED → STARTED`; COMPLETE_JOB OTP auto-generated |
-| 6 | `verifyMarketplaceOtp` (COMPLETE_JOB) | CONTRACTOR | Consumer reads OTP → `STARTED → COMPLETED` |
-| 7 | `createMarketplaceRating` | Any | Consumer rates contractor; contractor stats updated |
+| Step | Mutation                              | Role           | Notes                                                                                          |
+| ---- | ------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------- |
+| 1    | `createMarketplaceJob`                | CONSUMER       | Creates job in `PAYMENT_PENDING`; requires pricing + SLA configured                            |
+| 2    | `simulatePaymentSuccess`              | Any (DEV ONLY) | Moves `PAYMENT_PENDING → REQUESTED`; replace with Cashfree webhook in prod                     |
+| 3    | `acceptMarketplaceJob`                | CONTRACTOR     | Moves to `ACCEPTED`; auto-generates START_JOB OTP; sends OTP to consumer                       |
+| 3b   | `rejectMarketplaceJob`                | CONTRACTOR     | Moves to `REJECTED`; refund TODO                                                               |
+| 4    | `activeJobOtp`                        | CONSUMER       | Query to get current OTP code (since SMS is disabled in dev)                                   |
+| 5    | `verifyMarketplaceOtp` (START_JOB)    | CONTRACTOR     | Consumer reads OTP → contractor enters → `ACCEPTED → STARTED`; COMPLETE_JOB OTP auto-generated |
+| 6    | `verifyMarketplaceOtp` (COMPLETE_JOB) | CONTRACTOR     | Consumer reads OTP → `STARTED → COMPLETED`                                                     |
+| 7    | `createMarketplaceRating`             | Any            | Consumer rates contractor; contractor stats updated                                            |
 
 **OTP fallback (if expired):**
+
 ```graphql
 generateMarketplaceOtp(input: { jobId: "<id>", otpType: START_JOB })
 ```
 
 **Job state machine:**
+
 ```
 PAYMENT_PENDING → REQUESTED → ACCEPTED → STARTED → COMPLETED → CLOSED
                                        ↘ REJECTED
@@ -100,13 +171,16 @@ PAYMENT_PENDING / REQUESTED / ACCEPTED → CANCELLED (consumer only)
 **Confirmed:** There is no "add service to existing job" or "multi-service job" concept. Each job is a single-service, single-payment work order with an **immutable price snapshot** locked at creation time (`unit_price_snapshot`, `total_price_snapshot`).
 
 **If consumer wants multiple services:**
+
 - Create 2 separate jobs → 2 separate payments
 
 **If consumer picked wrong service before paying:**
+
 - Cancel job (`PAYMENT_PENDING` → `CANCELLED`, free — no payment yet)
 - Create new job with correct service
 
 **If consumer cancels after payment:**
+
 - Job cancellable from `REQUESTED` or `ACCEPTED` status
 - **No automatic refund** — manual process until Cashfree is integrated (known TODO)
 
@@ -116,12 +190,13 @@ PAYMENT_PENDING / REQUESTED / ACCEPTED → CANCELLED (consumer only)
 
 Two admin-side configurations must exist before any consumer can book:
 
-| Prerequisite | Where to configure | GraphQL mutation |
-|---|---|---|
+| Prerequisite                             | Where to configure           | GraphQL mutation           |
+| ---------------------------------------- | ---------------------------- | -------------------------- |
 | **Pricing** for `serviceId` + `areaType` | `/admin/marketplace/pricing` | `createMarketplacePricing` |
-| **SLA** for `serviceId` + `areaType` | `/admin/marketplace/sla` | `createMarketplaceSla` |
+| **SLA** for `serviceId` + `areaType`     | `/admin/marketplace/sla`     | `createMarketplaceSla`     |
 
 If either is missing, `createMarketplaceJob` throws:
+
 - `"No pricing configured for this service and area"`
 - `"No SLA configured for this service and area"`
 
@@ -129,12 +204,12 @@ If either is missing, `createMarketplaceJob` throws:
 
 ### ⚠️ Known Gaps Confirmed During Testing:
 
-| Gap | Impact |
-|-----|--------|
-| `SMS_GATEWAY_ENABLED=false` | OTPs generated but not SMS-delivered; consumer must use `activeJobOtp` query manually |
-| `paymentUrl: null` (Cashfree mock) | Consumer can't pay via link; use `simulatePaymentSuccess` in dev |
-| No refund on rejection/cancellation | Manual process; `// TODO: Trigger refund process` in jobs.service.ts |
-| `ratedUserId` must be `users.id` not `contractor.id` | In `createMarketplaceRating` — easy to confuse |
+| Gap                                                  | Impact                                                                                |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| `SMS_GATEWAY_ENABLED=false`                          | OTPs generated but not SMS-delivered; consumer must use `activeJobOtp` query manually |
+| `paymentUrl: null` (Cashfree mock)                   | Consumer can't pay via link; use `simulatePaymentSuccess` in dev                      |
+| No refund on rejection/cancellation                  | Manual process; `// TODO: Trigger refund process` in jobs.service.ts                  |
+| `ratedUserId` must be `users.id` not `contractor.id` | In `createMarketplaceRating` — easy to confuse                                        |
 
 ---
 
@@ -148,38 +223,46 @@ If either is missing, `createMarketplaceJob` throws:
 
 **New DB Table** (`mp_contractor_coverage_selections`):
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `id` | uuid PK | |
-| `contractor_id` | uuid FK → contractors | |
+| Column           | Type                              | Notes                                   |
+| ---------------- | --------------------------------- | --------------------------------------- |
+| `id`             | uuid PK                           |                                         |
+| `contractor_id`  | uuid FK → contractors             |                                         |
 | `selection_type` | `mp_coverage_selection_type` enum | `DISTRICT` / `SUB_DISTRICT` / `VILLAGE` |
-| `reference_code` | varchar(100) | LGD code or village UUID |
-| `display_name` | varchar(500) | Human-readable label |
-| `is_active` | boolean | default true |
-| `created_at` | timestamp | |
+| `reference_code` | varchar(100)                      | LGD code or village UUID                |
+| `display_name`   | varchar(500)                      | Human-readable label                    |
+| `is_active`      | boolean                           | default true                            |
+| `created_at`     | timestamp                         |                                         |
 
 Unique index on `(contractor_id, selection_type, reference_code)`.
 
 **New Enum** (`enums.ts`):
+
 ```typescript
-coverageSelectionTypeEnum = pgEnum('mp_coverage_selection_type', ['DISTRICT', 'SUB_DISTRICT', 'VILLAGE'])
+coverageSelectionTypeEnum = pgEnum("mp_coverage_selection_type", [
+  "DISTRICT",
+  "SUB_DISTRICT",
+  "VILLAGE",
+]);
 ```
 
 **Migration:** `0014_sweet_silver_samurai.sql` — generated via `drizzle-kit generate`. **Must be applied to DB.**
 
 **New GraphQL APIs:**
+
 ```graphql
 Query:    myContractorCoverageAreas          # CONTRACTOR role
 Mutation: updateMyContractorCoverageAreas    # CONTRACTOR role, PREMIUM-only gate
 ```
 
 **New GraphQL Types:**
+
 - `ContractorCoverageSelection` ObjectType
 - `CoverageSelectionInput` InputType (`selectionType`, `referenceCode`, `displayName`)
 - `UpdateCoverageAreasInput` InputType (`selections: CoverageSelectionInput[]`)
 - `CoverageSelectionType` enum registered via `registerEnumType`
 
 **Service Methods (`contractor-profile.service.ts`):**
+
 - `getMyCoverageAreas(contractorId)` — returns all selections ordered by `createdAt`
 - `updateMyCoverageAreas(contractorId, selections[])` — PREMIUM check via `ForbiddenException`, delete-all + bulk insert
 
@@ -188,6 +271,7 @@ Mutation: updateMyContractorCoverageAreas    # CONTRACTOR role, PREMIUM-only gat
 Old: `INNER JOIN mp_contractor_location_mapping` (exact village UUID only)
 
 New: `EXISTS` subquery with 3-tier match:
+
 ```sql
 EXISTS (
   SELECT 1 FROM mp_contractor_coverage_selections mcs
@@ -199,27 +283,28 @@ EXISTS (
   )
 )
 ```
+
 Also enforces `mp.subscription_type = 'PREMIUM'` — FREE contractors never appear.
 
 **Frontend Changes:**
 
-| File | Change |
-|------|--------|
+| File                                                    | Change                                                                                                                                                         |
+| ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `(contractor)/contractor/marketplace/coverage/page.tsx` | **NEW** — PREMIUM gate, cascading district→sub-district→village picker, colour-coded chips (blue=DISTRICT, amber=SUB_DISTRICT, green=VILLAGE), save/cancel bar |
-| `(contractor)/contractor/marketplace/page.tsx` | Added "Coverage Areas" quick-action card with PREMIUM badge |
-| `hooks/marketplace/useMarketplaceContractorProfiles.ts` | Added `useMyContractorCoverageAreas()`, `useUpdateMyCoverageAreas()` hooks + `ContractorCoverageSelection` / `CoverageSelectionInput` TS interfaces |
-| `graphql/marketplace.ts` | Added `GET_MY_CONTRACTOR_COVERAGE_AREAS`, `UPDATE_MY_COVERAGE_AREAS` operations |
+| `(contractor)/contractor/marketplace/page.tsx`          | Added "Coverage Areas" quick-action card with PREMIUM badge                                                                                                    |
+| `hooks/marketplace/useMarketplaceContractorProfiles.ts` | Added `useMyContractorCoverageAreas()`, `useUpdateMyCoverageAreas()` hooks + `ContractorCoverageSelection` / `CoverageSelectionInput` TS interfaces            |
+| `graphql/marketplace.ts`                                | Added `GET_MY_CONTRACTOR_COVERAGE_AREAS`, `UPDATE_MY_COVERAGE_AREAS` operations                                                                                |
 
 **Backend Files Changed:**
 
-| File | Change |
-|------|--------|
-| `database/schema/marketplace/enums.ts` | Added `coverageSelectionTypeEnum` |
-| `database/schema/marketplace/contractor-extensions.ts` | Added `contractorCoverageSelections` table |
-| `database/migrations/0014_sweet_silver_samurai.sql` | Auto-generated DDL (CREATE TYPE + CREATE TABLE + FK + indexes) |
-| `modules/marketplace/contractors/contractor-profile.types.ts` | New ObjectType + InputTypes |
-| `modules/marketplace/contractors/contractor-profile.service.ts` | 3 new/updated methods |
-| `modules/marketplace/contractors/contractor-profile.resolver.ts` | 1 new Query + 1 new Mutation |
+| File                                                             | Change                                                         |
+| ---------------------------------------------------------------- | -------------------------------------------------------------- |
+| `database/schema/marketplace/enums.ts`                           | Added `coverageSelectionTypeEnum`                              |
+| `database/schema/marketplace/contractor-extensions.ts`           | Added `contractorCoverageSelections` table                     |
+| `database/migrations/0014_sweet_silver_samurai.sql`              | Auto-generated DDL (CREATE TYPE + CREATE TABLE + FK + indexes) |
+| `modules/marketplace/contractors/contractor-profile.types.ts`    | New ObjectType + InputTypes                                    |
+| `modules/marketplace/contractors/contractor-profile.service.ts`  | 3 new/updated methods                                          |
+| `modules/marketplace/contractors/contractor-profile.resolver.ts` | 1 new Query + 1 new Mutation                                   |
 
 ---
 
@@ -247,16 +332,16 @@ Also enforces `mp.subscription_type = 'PREMIUM'` — FREE contractors never appe
 
 ### ⚠️ Pending After This Session:
 
-| # | Action | Who | Blocking? |
-|---|--------|-----|-----------|
-| 1 | Apply `0014_sweet_silver_samurai.sql` to dev DB | Developer | ✅ Yes — new table doesn't exist yet |
-| 2 | Restart backend (`pnpm start:dev`) | Developer | ✅ Yes — new resolver/enum not loaded |
-| 3 | Cashfree subscription payment integration | Developer | Production |
-| 4 | Cashfree job payment (`initiateMarketplacePayment`) | Developer | Production |
-| 5 | Move `paymentIntents` Map → DB/Redis | Developer | Production |
-| 6 | `confirmSubscriptionPayment` webhook-only guard | Developer | Production |
-| 7 | Enable SMS (`SMS_GATEWAY_ENABLED=true`) + TRAI DLT registration | Admin + Developer | Production |
-| 8 | Deprecate `assignContractorLocations` mutation | Developer | Non-blocking |
+| #   | Action                                                          | Who               | Blocking?                             |
+| --- | --------------------------------------------------------------- | ----------------- | ------------------------------------- |
+| 1   | Apply `0014_sweet_silver_samurai.sql` to dev DB                 | Developer         | ✅ Yes — new table doesn't exist yet  |
+| 2   | Restart backend (`pnpm start:dev`)                              | Developer         | ✅ Yes — new resolver/enum not loaded |
+| 3   | Cashfree subscription payment integration                       | Developer         | Production                            |
+| 4   | Cashfree job payment (`initiateMarketplacePayment`)             | Developer         | Production                            |
+| 5   | Move `paymentIntents` Map → DB/Redis                            | Developer         | Production                            |
+| 6   | `confirmSubscriptionPayment` webhook-only guard                 | Developer         | Production                            |
+| 7   | Enable SMS (`SMS_GATEWAY_ENABLED=true`) + TRAI DLT registration | Admin + Developer | Production                            |
+| 8   | Deprecate `assignContractorLocations` mutation                  | Developer         | Non-blocking                          |
 
 ---
 
@@ -267,11 +352,13 @@ Also enforces `mp.subscription_type = 'PREMIUM'` — FREE contractors never appe
 #### **1. VALIDATIONPIPE "property contractorId should not exist" — ROOT CAUSE & FIX**
 
 **Error:** Every call to `initiateSubscriptionUpgrade` returned:
+
 ```json
 { "message": ["property contractorId should not exist"], "statusCode": 400 }
 ```
 
 **Why it happened (two mechanisms combined):**
+
 - `target: "ES2023"` in `tsconfig.json` → TypeScript emits class fields as `Object.defineProperty` calls, meaning `contractorId?: string` becomes an own enumerable property set to `undefined` on every class instance — even when the client sends no such field.
 - `ValidationPipe({ forbidNonWhitelisted: true })` in `main.ts` → any property with no class-validator decorator on the class is rejected.
 
@@ -283,13 +370,13 @@ Also enforces `mp.subscription_type = 'PREMIUM'` — FREE contractors never appe
 
 **New DB columns on `mp_contractor_profile`:**
 
-| Column | Type | Notes |
-|--------|------|-------|
-| `bank_account_number` | `varchar(30)` | Account number |
-| `bank_ifsc_code` | `varchar(15)` | IFSC code |
-| `bank_account_holder_name` | `varchar(255)` | Account holder name |
-| `bank_name` | `varchar(255)` | Bank name (optional) |
-| `bank_verified` | `boolean` | Default false, for future Cashfree verify API |
+| Column                     | Type           | Notes                                         |
+| -------------------------- | -------------- | --------------------------------------------- |
+| `bank_account_number`      | `varchar(30)`  | Account number                                |
+| `bank_ifsc_code`           | `varchar(15)`  | IFSC code                                     |
+| `bank_account_holder_name` | `varchar(255)` | Account holder name                           |
+| `bank_name`                | `varchar(255)` | Bank name (optional)                          |
+| `bank_verified`            | `boolean`      | Default false, for future Cashfree verify API |
 
 **Migration:** `0013_contractor_bank_details.sql` (run `pnpm run db:migrate`)
 
@@ -314,6 +401,7 @@ Excel Import → auto-create FREE profile (isMarketplaceActive: false)
 ```
 
 **Changes:**
+
 - `imports.resolver.ts`: `bulkImportContractors` transaction now inserts `mp_contractor_profile` rows (FREE, inactive) with `onConflictDoNothing` safety
 - `subscriptions.service.ts`: `confirmPayment` sets `isMarketplaceActive = true`
 - `subscriptions.service.ts`: `getSubscriptionStatus` returns graceful FREE default (no 404)

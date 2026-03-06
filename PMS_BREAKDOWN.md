@@ -6,6 +6,29 @@
 
 ---
 
+## Epic 0 — Recent Additions (Location Dashboard & Core System Hub)
+
+### Capability 0.0 — LGD Import Resilience & Location Search
+
+- **Data Parsing**: Extended the Excel parser within the `user-service` to dynamically handle explicit LGD naming conventions (e.g., "District Name (In English)").
+- **Admin Utilities**: Injected real-time multi-column search capabilities into the Marketplace Locations dashboard for Districts, Sub-Districts, and Villages.
+- **Query Optimization**: Implemented `DISTINCT ON` rules to the District and Sub-District location queries within `locations.service.ts` to strictly safeguard the frontend against listing UI duplications.
+
+### Capability 0.1 — Subscription Plan Versioning
+
+- **Versioning Strategy**: Upgraded `SubscriptionPlan` to include an immutable `version` field.
+- **Workflow**: Updates to pricing terms retire the active plan and insert a new `v+1` record.
+- **Backwards Compatibility**: Contractors retain their original pricing snapshot stored in `SubscriptionPaymentIntent` and their active historical plan logic.
+- **UI Element**: "Log" buttons added to display a plan's version history in the admin panel.
+
+### Capability 0.2 — Marketplace Hub Redesign & Pricing Integration
+
+- **Guided Setup Flow**: Restructured the disconnected `/admin/marketplace` grid into a numbered flow: Locations → UOM → Categories → Services.
+- **Operational Grid**: Separated daily items (SLA, Jobs, Contractors, Subs, Import Logs) into a lower secondary layout.
+- **Integrated Pricing**: Merged `Pricing Configuration` into the `Service Creation Modal`. Creating or editing a service now simultaneously captures and executes mutations for Urban, Semi-Urban, and Rural pricing definitions.
+
+---
+
 ## Epic 1 — Authentication & Authorization
 
 ### Capability 1.1 — Identity & Credential Management
@@ -471,6 +494,8 @@
 | Layer        | Tasks                                                                                            |
 | ------------ | ------------------------------------------------------------------------------------------------ |
 | **Backend**  | Implement `createMarketplaceRating` mutation with star rating and review text for completed jobs |
+|              | Implement `hasRated` boolean resolution across job arrays using `inArray` queries                |
+|              | Enforce state machine transition: Consumer Rating forces job from `COMPLETED` → `CLOSED`         |
 |              | Implement `marketplaceRatings` query (Admin) with pagination and filters                         |
 |              | Implement `marketplaceRatingSummary` query — aggregated rating stats per contractor              |
 |              | Implement `marketplaceContractorReviews` query — paginated reviews for a contractor              |
@@ -695,6 +720,57 @@
 | **Backend**  | Implement support module for consumer help desk functionality |
 | **Frontend** | Build consumer help page at `(consumer)/consumer/help`        |
 | **Testing**  | E2E test support ticket creation and retrieval                |
+
+---
+
+## Epic 10 — Admin Panel Enhancements
+
+### Capability 10.1 — Marketplace Admin Configuration
+
+#### Feature 10.1.1 — Global SLA Management
+
+> **User Story**: As an administrator, I want to configure a global fallback SLA so that marketplace jobs always have a deadline even when no service-specific SLA is set.
+
+| Layer        | Tasks                                                                                 |
+| ------------ | ------------------------------------------------------------------------------------- |
+| **Backend**  | Add `GlobalSla` ObjectType and `UpsertGlobalSlaInput` to `sla.types.ts`               |
+|              | Add `getGlobalSla()` to `SlaService` — fetches single active row from `mp_global_sla` |
+|              | Add `upsertGlobalSla()` to `SlaService` — insert or update the global SLA row         |
+|              | Add `globalSla` query and `upsertGlobalSla` mutation to `SlaResolver` (Admin only)    |
+| **Frontend** | Create `/admin/marketplace/global-sla` page with SLA timeline editor                  |
+|              | Add Acceptance, Job Start, Completion hour inputs with live visual timeline preview   |
+|              | Add active/inactive toggle with warning when disabled                                 |
+|              | Display last-updated timestamp from DB                                                |
+
+---
+
+#### Feature 10.1.2 — Subscription Plan Management
+
+> **User Story**: As an administrator, I want to create and edit subscription pricing plans so that contractors can subscribe to the marketplace at different tiers.
+
+| Layer        | Tasks                                                                                           |
+| ------------ | ----------------------------------------------------------------------------------------------- |
+| **Backend**  | Add `CreateSubscriptionPlanInput` InputType to `subscriptions.types.ts`                         |
+|              | Add `createSubscriptionPlan()` to `SubscriptionsService` — inserts to `mp_subscription_plans`   |
+|              | Add `createSubscriptionPlan` mutation to `SubscriptionsResolver` (Admin only)                   |
+| **Frontend** | Add **Add Plan** button to `/admin/marketplace/subscriptions` page                              |
+|              | Build Add Plan modal with duration, months, base price, discount, live final price, description |
+|              | Improve Edit modal — show warning and disable Save when plan has no DB record (fallback mode)   |
+|              | Add Subscription Plans and Global SLA cards to `/admin/marketplace` configuration section       |
+
+---
+
+#### Feature 10.1.3 — Consumer Single Upload Form Expansion
+
+> **User Story**: As an administrator, I want the single consumer upload form to capture all required fields so that consumers are fully registered without needing a secondary step.
+
+| Layer        | Tasks                                                                                               |
+| ------------ | --------------------------------------------------------------------------------------------------- |
+| **Frontend** | Expand single consumer form to include Administrative Hierarchy (Circle, Division, Subdivision IDs) |
+|              | Add Connection and Meter fields (Tariff Code, Connection Type, Supply Voltage, Meter Type)          |
+|              | Add KYC fields (Identity Type, Identity Number, GSTN)                                               |
+|              | Add full Billing Address fields (Line, City, District, State, Pincode)                              |
+|              | Organise form into labelled sections with a **View Consumers** shortcut button                      |
 
 ---
 

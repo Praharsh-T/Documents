@@ -1,8 +1,61 @@
 # Session Changes Log
 
-**Last Updated:** 26 February 2026
+**Last Updated:** 03 March 2026
 
 This document tracks all changes made during development sessions. Update this file as changes are made.
+
+---
+
+## Session: 03 March 2026 - LGD Import & Admin Search Sync
+
+### 1. English Header Parsing for LGD Excel (Backend)
+
+**Problem:** The Location Master import skipped district and sub-district names if the Excel headers were explicitly formatted as "District Name (In English)", inserting blank values into the database.
+**Fix:** Appended direct extraction fallbacks for `row['District Name (In English)']` and `row['Sub-District Name (In English)']` within `imports.resolver.ts` to seamlessly populate the database fields. Because of the `ON CONFLICT DO UPDATE` bulk upsert implementation, admins can safely re-upload the same file to instantly patch all previously blank names without duplication.
+
+### 2. Location Matrix Search Functionality (Frontend)
+
+**Problem:** Admins had to manually scroll through thousands of active villages, districts, and sub-districts inside the Marketplace Locations dashboard.
+**Fix:** Injected `useState` search constraints and active filter mapping directly into the `AdminLocationsPage` component. Added dedicated `Search` input blocks above the Districts, Sub-Districts, and Villages columns for real-time client-side filtering.
+
+---
+
+## Session: 03 March 2026 - Marketplace Rating & Job Status Fixes
+
+### 1. `hasRated` Field Resolution (Backend)
+
+**Problem:** Consumers received `null` and contractors received `false` for the `hasRated` property on marketplace jobs, breaking the frontend ability to properly lock rating forms on completed services.
+**Fix:**
+
+- Re-architected `getContractorJobs` and `getConsumerJobs` to utilize Drizzle ORM's `inArray` method instead of postgres raw `sql.ANY`.
+- Updated `jobs.resolver.ts` to explicitly surface the authenticated `userId` as `raterUserId` inside consumer job fetches.
+
+### 2. Frontend Rating Lockout & Codegen Readiness
+
+**Problem:** "Rate Contractor" blocks were eternally accessible on `COMPLETED`/`CLOSED` jobs.
+**Fix:** Added `hasRated?: boolean` to the `MarketplaceJob` hook interfaces and expanded the `MarketplaceJobFields` GraphQL query fragment. Implemented `!job.hasRated` checks directly on the `canRate` validation booleans in both consumer and contractor detail pages to disable secondary ratings natively in the UI.
+
+### 3. Lifecycle Status Documentation
+
+**Clarification:** Validated the state pipeline: `COMPLETED` is triggered by contractor OTP validation. `CLOSED` is strictly achieved only when the Consumer subsequently rates the job. Created a dedicated document (`job_statuses_explanation.md`) outlining state triggers to resolve UI anomaly concerns.
+
+---
+
+## Session: 02 March 2026 - Marketplace UI Redesign & Subscription Versioning
+
+### 1. Subscription Plan Versioning
+
+**Problem:** Changing the terms of a `SubscriptionPlan` (e.g. Quarterly price) would modify the core record, breaking historical mapping for contractors who bought it at an older price.
+**Fix:** Introduced an append-only `version` integer. Updating a plan retires the active flag on the old record and inserts a cloned `v+1` record containing the new price.
+**UI:** Added a "Log" query and button on the Subscription Plans admin page to render historical changes.
+
+### 2. Marketplace Hub Redesign & Pricing Integration
+
+**Problem:** The `/admin/marketplace` landing page contained 11 equally weighted cards, obfuscating the actual dependency order required to create a Service.
+**Fix:**
+
+- Split the UI into a numbered "Catalog Setup Flow" (Locations → UOM → Category → Services & Pricing).
+- Appended the 3 currency inputs (Urban, Semi-Urban, Rural) directly into the `ServiceModal`. A newly crafted service now synchronously dispatches `createMarketplaceService` and `bulkSetMarketplacePrices` back-to-back, allowing completion inside a single modal.
 
 ---
 
@@ -13,10 +66,12 @@ This document tracks all changes made during development sessions. Update this f
 **Problem:** `initiateSubscriptionUpgrade` threw a 400 Bad Request with `"property contractorId should not exist"` every time a contractor called it.
 
 **Root Cause (two interacting mechanisms):**
+
 - `tsconfig.json` has `target: "ES2023"` which enables `useDefineForClassFields` by default. This causes TypeScript class fields with no initializer (like `contractorId?: string`) to be emitted as own enumerable properties set to `undefined` on every class instance — even when the client never sends them.
 - `main.ts` has `ValidationPipe({ whitelist: true, forbidNonWhitelisted: true })`. When class-validator scans all own properties and finds `contractorId` with **zero decorators**, it throws.
 
 **Fix (`subscriptions.types.ts`):**
+
 - Added `@IsOptional()` and `@IsString()` decorators to the internal `contractorId?: string` field on `InitiateSubscriptionUpgradeInput`. This whitelists it without exposing it to GraphQL (no `@Field()`).
 
 ```typescript
@@ -34,6 +89,7 @@ contractorId?: string;  // whitelisted, still not in GraphQL schema
 ### 2. Bank Account Details Added to Subscription Upgrade
 
 **Files Changed:**
+
 - `user-service/src/database/schema/marketplace/contractor-extensions.ts` — 5 new columns on `mp_contractor_profile`
 - `user-service/src/database/migrations/0013_contractor_bank_details.sql` — migration file
 - `user-service/src/modules/marketplace/subscriptions/subscriptions.types.ts` — new `BankAccountInput` class + optional `bankAccount` field on `InitiateSubscriptionUpgradeInput`
@@ -54,10 +110,10 @@ ALTER TABLE "mp_contractor_profile" ADD COLUMN "bank_verified" boolean DEFAULT f
 ```typescript
 @InputType()
 export class BankAccountInput {
-  accountNumber: string;       // @MaxLength(30)
-  ifscCode: string;            // @Matches IFSC regex
-  accountHolderName: string;   // @MaxLength(255)
-  bankName?: string;           // optional
+  accountNumber: string; // @MaxLength(30)
+  ifscCode: string; // @Matches IFSC regex
+  accountHolderName: string; // @MaxLength(255)
+  bankName?: string; // optional
 }
 ```
 
@@ -65,18 +121,25 @@ export class BankAccountInput {
 
 ```graphql
 mutation {
-  initiateSubscriptionUpgrade(input: {
-    duration: MONTHLY
-    bankAccount: {
-      accountNumber: "1234567890"
-      ifscCode: "SBIN0001234"
-      accountHolderName: "John Doe"
-      bankName: "State Bank of India"
+  initiateSubscriptionUpgrade(
+    input: {
+      duration: MONTHLY
+      bankAccount: {
+        accountNumber: "1234567890"
+        ifscCode: "SBIN0001234"
+        accountHolderName: "John Doe"
+        bankName: "State Bank of India"
+      }
     }
-  }) {
+  ) {
     success
     message
-    paymentIntent { id amount paymentLink expiresAt }
+    paymentIntent {
+      id
+      amount
+      paymentLink
+      expiresAt
+    }
   }
 }
 ```
@@ -88,18 +151,20 @@ mutation {
 **Previous (wrong) assumption:** Admin manually creates marketplace profiles.
 
 **Correct flow:**
+
 1. Admin imports contractors via Excel → `bulkImportContractors` auto-creates `mp_contractor_profile` row with `subscriptionType: 'FREE'`, `isMarketplaceActive: false` in the same DB transaction
 2. Contractor purchases PREMIUM → `confirmPayment()` sets `isMarketplaceActive: true`
 3. Safety net: `initiateUpgrade` auto-creates profile if somehow missing
 
 **Files Changed:**
+
 - `user-service/src/modules/support/imports.resolver.ts` — added marketplace profile insert inside contractor import transaction
 
 ```typescript
 const profileValues = contractorValues.map((c) => ({
   id: uuidv4(),
   contractorId: c.id,
-  subscriptionType: 'FREE' as const,
+  subscriptionType: "FREE" as const,
   isMarketplaceActive: false,
 }));
 await tx
@@ -122,7 +187,7 @@ await tx
 ```typescript
 // subscriptions.resolver.ts
 const contractor = await this.contractorsService.findByUserId(userId);
-input.contractorId = contractor.id;  // injected internally
+input.contractorId = contractor.id; // injected internally
 return this.subscriptionsService.initiateUpgrade(input);
 ```
 
@@ -130,7 +195,7 @@ return this.subscriptionsService.initiateUpgrade(input);
 
 ```typescript
 if (!input.contractorId) {
-  throw new BadRequestException('Contractor ID is required');
+  throw new BadRequestException("Contractor ID is required");
 }
 const contractorId = input.contractorId;
 ```
@@ -143,6 +208,7 @@ const contractorId = input.contractorId;
 **File Modified:** `web-frontend/src/app/layout.tsx`
 
 Reads `NEXT_PUBLIC_ENV` from env file. Renders a fixed badge at `bottom-4 right-4`:
+
 - `development` → green pill, label **DEV**, pulsing dot
 - `staging` → amber pill, label **STAGING**, pulsing dot
 - `production` → renders `null` (nothing shown)

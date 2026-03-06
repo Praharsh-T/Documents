@@ -1,7 +1,7 @@
 # Marketplace Mobile App — API Flows
 **For:** Consumer App & Contractor App  
 **Backend:** `user-service` (NestJS GraphQL)  
-**Last Updated:** 26 February 2026  
+**Last Updated:** 27 February 2026  
 **Base GraphQL URL:** `https://connectshakti.klonec.cloud/graphql`  
 **Auth:** All requests need `Authorization: Bearer <jwt_token>` header
 
@@ -268,7 +268,12 @@ query SearchContractors($input: ContractorSearchInput!) {
 > `locationId` = village `id` from Step 1d  
 > `serviceId` = service `id` from Step 2
 
-**What it does internally:** Finds contractors who have BOTH the selected location AND service in their mapping, have an active marketplace profile, and have valid pricing configured for the area type.
+**What it does internally:** Finds contractors who:
+1. Are **PREMIUM** subscribers (FREE contractors do not appear in search)
+2. Have an active marketplace profile
+3. Have selected a coverage area that **includes the consumer's location** — hierarchical match: contractor who selected the consumer's district covers all villages in it; one who selected the sub-district covers all villages in it; one who selected the exact village covers that village only
+4. Offer the selected service
+5. Have pricing configured for the location's area type
 
 **Save:** Selected contractor's `contractorId` = **`contractorId`** (for booking).
 
@@ -556,7 +561,11 @@ mutation RateContractor($input: CreateRatingInput!) {
 ## 3. Contractor Flow
 
 ```
-[Admin sets up profile + locations + services]
+[Admin creates marketplace profile once]
+  → Contractor upgrades to PREMIUM
+  → Contractor sets Coverage Areas (district / sub-district / village)
+  → Contractor selects Services they offer
+  → Contractor appears in consumer search
   → View Incoming Jobs → Accept / Reject
   → [Backend auto-generates START OTP → Consumer sees it]
   → Enter Start OTP (consumer tells you) → job STARTED
@@ -566,15 +575,15 @@ mutation RateContractor($input: CreateRatingInput!) {
   → Manage Subscription
 ```
 
-> **Pre-requisite:** Admin must have created a contractor marketplace profile and assigned their serviceable locations and services. Contractor does NOT do this themselves — it's **Admin-managed only**.
+> **Pre-requisite:** Admin must have created a contractor marketplace profile (one-time setup). After that, the contractor themselves selects their coverage areas and services. **PREMIUM subscription is required to appear in consumer searches.**
 
 ---
 
-### Admin Setup for a Contractor *(done once by Admin before contractor can receive jobs)*
+### Admin Setup for a Contractor *(one-time — Admin creates the profile only)*
 
 > These mutations require **ADMIN** or **SUPER_ADMIN** role.
 
-#### 1. Create Marketplace Profile
+#### Create Marketplace Profile
 ```graphql
 mutation {
   createContractorMarketplaceProfile(input: {
@@ -588,46 +597,86 @@ mutation {
 }
 ```
 
-#### 2. Assign Serviceable Locations *(which villages the contractor covers — Admin only)*
+> That's it from Admin's side. Location assignment is no longer Admin-managed — the contractor sets their own coverage areas after upgrading to PREMIUM (see below).
+
+---
+
+### Contractor Self-Service: Coverage Areas *(PREMIUM only)*
+
+After upgrading to PREMIUM, the contractor selects the geographic areas they want to serve. This is what makes them appear in consumer searches.
+
+#### Rules
+- **State-level selection is not allowed** — must select at district level or below
+- **DISTRICT** → covers all consumers in that district
+- **SUB_DISTRICT** → covers all consumers in that taluk/block
+- **VILLAGE** → covers only consumers from that specific village
+- Multiple selections of any type are allowed (e.g. 2 districts + 3 specific villages)
+- Each save **replaces** the entire selection
+
+#### Get current coverage areas
 ```graphql
-mutation {
-  assignContractorLocations(input: {
-    contractorId: "<contractor-uuid>",
-    locationIds: ["<village-uuid-1>", "<village-uuid-2>"]
-  }) {
+query {
+  myContractorCoverageAreas {
+    id
+    selectionType
+    referenceCode
+    displayName
+    isActive
+    createdAt
+  }
+}
+```
+> **Role:** `CONTRACTOR`  
+> Returns the contractor's current selections. Empty array = not set yet.
+
+---
+
+#### Set / update coverage areas
+```graphql
+mutation UpdateCoverageAreas($input: UpdateCoverageAreasInput!) {
+  updateMyContractorCoverageAreas(input: $input) {
     success
     message
   }
 }
 ```
-> `locationIds` = village `id` values from `marketplaceVillages`. **Replaces** the entire set — pass all IDs you want active.
-
-#### 3. View What's Assigned (Admin or Contractor can query)
-```graphql
-query {
-  marketplaceContractorLocations(contractorId: "<contractor-uuid>") {
-    locationId
-    villageName
-    districtName
-    areaType
-    isActive
-  }
-  marketplaceContractorServices(contractorId: "<contractor-uuid>") {
-    serviceId
-    serviceName
-    serviceCategory
-    isActive
+**Input:**
+```json
+{
+  "input": {
+    "selections": [
+      {
+        "selectionType": "DISTRICT",
+        "referenceCode": "572",
+        "displayName": "Bengaluru Urban, Karnataka"
+      },
+      {
+        "selectionType": "SUB_DISTRICT",
+        "referenceCode": "5720001",
+        "displayName": "Yelahanka, Bengaluru Urban"
+      },
+      {
+        "selectionType": "VILLAGE",
+        "referenceCode": "<village-uuid>",
+        "displayName": "Vidyaranyapura, Yelahanka, Bengaluru Urban"
+      }
+    ]
   }
 }
 ```
+> **Role:** `CONTRACTOR` — uses JWT, contractor can only update their own  
+> **PREMIUM required** — throws `FORBIDDEN` if subscription is FREE  
+> `referenceCode` for DISTRICT = `districtCode` from `marketplaceDistricts`; for SUB_DISTRICT = `subDistrictCode` from `marketplaceSubDistricts`; for VILLAGE = village `id` UUID from `marketplaceVillages`  
+> `displayName` is a human-readable label stored for display — build it as `"<name>, <parent name>"`  
+> Send **all** desired selections in one call — **replaces** entirely
 
-> Until steps 1–2 are done by Admin, the contractor will not appear in any `searchMarketplaceContractors` result and cannot receive jobs.
+> ⚠️ Until coverage areas are set, the contractor will not appear in any `searchMarketplaceContractors` result.
 
 ---
 
 ### Contractor Self-Service: Select Services
 
-After Admin creates the profile and assigns locations, the **contractor selects which services they offer** from the Admin-created service catalogue.
+After Admin creates the profile, the **contractor selects which services they offer** from the Admin-created service catalogue. Works for both FREE and PREMIUM.
 
 #### Step 1 — Fetch all available services (browse what Admin has created)
 ```graphql
@@ -667,7 +716,7 @@ mutation {
 > **Role:** `CONTRACTOR` (uses JWT — contractor can only update their own).  
 > **Replaces** the full selection — send all desired service IDs each time.  
 > Validates that every ID is an active service. Invalid IDs → `BAD_REQUEST`.  
-> Contractor will only appear in consumer search for services they have selected **AND** that have pricing configured for their area.
+> Contractor will only appear in consumer search for services they have selected **AND** that have pricing configured for their area **AND** they are PREMIUM with coverage areas set.
 
 ---
 
@@ -1138,11 +1187,22 @@ query RatingSummary($userId: ID!) {
 | `SEMI_URBAN` | Semi-urban area — mid price |
 | `RURAL` | Rural area — lower price |
 
+### CoverageSelectionType
+| Value | `referenceCode` field | Meaning |
+|-------|-----------------------|---------|
+| `DISTRICT` | `districtCode` (e.g. `"572"`) | Contractor covers all consumers in the entire district |
+| `SUB_DISTRICT` | `subDistrictCode` (e.g. `"5720001"`) | Contractor covers all consumers in that taluk/block |
+| `VILLAGE` | village `id` UUID | Contractor covers only that specific village |
+
+> **State-level is intentionally unsupported.** Contractors must select at district level or below.
+
+---
+
 ### SubscriptionType
 | Value | Meaning |
 |-------|---------|
-| `FREE` | Limited service categories |
-| `PREMIUM` | All service categories |
+| `FREE` | Cannot set coverage areas; does NOT appear in consumer searches |
+| `PREMIUM` | Can set coverage areas and services; appears in consumer searches |
 
 ### SubscriptionDuration
 | Value | Months |
@@ -1177,6 +1237,7 @@ query RatingSummary($userId: ID!) {
 | `BAD_REQUEST: Max OTP attempts reached` | 3 wrong attempts | Generate a new OTP |
 | `BAD_REQUEST: Acceptance deadline has passed` | Too late to accept | Job will be marked SLA_BREACH |
 | `FORBIDDEN: You are not assigned to this job` | Wrong contractor | Check job assignment |
+| `FORBIDDEN: Coverage area management requires a PREMIUM subscription` | Contractor is FREE | Upgrade to PREMIUM first, then set coverage areas |
 
 ---
 
@@ -1189,6 +1250,9 @@ query RatingSummary($userId: ID!) {
 | `contractorId` | Contractor UUID | `searchMarketplaceContractors` → `contractorId` |
 | `jobId` | Job UUID | `createMarketplaceJob` → `jobId`, or `myMarketplaceJobs` → `id` |
 | `areaType` | URBAN/SEMI_URBAN/RURAL | `marketplaceVillages` → `areaType` (from selected village) |
+| `districtCode` (for coverage) | District reference code | `marketplaceDistricts` → `code` |
+| `subDistrictCode` (for coverage) | Sub-district reference code | `marketplaceSubDistricts` → `code` |
+| `villageId` (for coverage) | Village UUID | `marketplaceVillages` → `id` |
 
 ---
 

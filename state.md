@@ -1,6 +1,6 @@
 # SmartMeter — System State Report
 
-> **Generated**: 2026-02-20 · Based on full codebase analysis  
+> **Generated**: 2026-02-27 · Based on full codebase analysis  
 > **Backend**: `user-service/` · **Frontend**: `web-frontend/`
 
 ---
@@ -484,10 +484,39 @@ TODO: Implement:
 
 ### 2.19 Marketplace — Contractor Profiles Module
 
-| Attribute       | Detail                                    |
-| --------------- | ----------------------------------------- |
-| **Description** | Contractor marketplace profile management |
-| **Status**      | ✅ Completed                              |
+| Attribute       | Detail                                                                          |
+| --------------- | ------------------------------------------------------------------------------- |
+| **Description** | Contractor marketplace profile management, self-service coverage area selection |
+| **Status**      | ✅ Completed (migration pending DB apply)                                       |
+
+**Features Implemented**:
+
+- Profile creation (Admin one-time), bio/photo, service selection
+- Subscription-gated visibility (`subscription_type = 'PREMIUM'` required for search)
+- `searchContractors()` — hierarchical EXISTS subquery: VILLAGE → SUB_DISTRICT → DISTRICT match against `mp_contractor_coverage_selections`
+- **Self-service coverage areas** (PREMIUM-only gate enforced in service):
+  - `myContractorCoverageAreas` Query — returns all active selections
+  - `updateMyContractorCoverageAreas` Mutation — full replace (delete + insert)
+  - `ContractorCoverageSelection` ObjectType, `UpdateCoverageAreasInput` / `CoverageSelectionInput` InputTypes
+
+**New DB Table** (`mp_contractor_coverage_selections`):
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | uuid PK | |
+| `contractor_id` | uuid FK → contractors | |
+| `selection_type` | `mp_coverage_selection_type` enum | `DISTRICT` / `SUB_DISTRICT` / `VILLAGE` |
+| `reference_code` | varchar(100) | LGD code (district/sub-district) or village UUID |
+| `display_name` | varchar(500) | Human-readable label |
+| `is_active` | boolean | default true |
+| `created_at` | timestamp | |
+
+**Unique index** on `(contractor_id, selection_type, reference_code)`
+
+**Pending**:
+
+- ⚠️ Migration `0014_sweet_silver_samurai.sql` generated via `drizzle-kit generate` — **not yet applied to DB**
+- `assignContractorLocations` mutation is now legacy (unused by search) — can be deprecated
 
 ---
 
@@ -678,19 +707,19 @@ TODO: Implement:
 | **Description** | Next.js 16 frontend with Apollo Client, Tailwind CSS |
 | **Status**      | ✅ Completed                                         |
 
-**Pages (58 total)**:
+**Pages (59 total)**:
 
-| Route Group               | Pages | Key Pages                                                                                                                                                      |
-| ------------------------- | ----- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `(auth)`                  | 2     | Login, Register                                                                                                                                                |
-| `(admin)/admin`           | 18    | Dashboard, Admins, ROs, Consumers, Sites, Master Data, Upload, Analytics, Marketplace (Services, Categories, UOMs, Pricing, SLA, Locations, Contractors, Jobs) |
-| `(ro)/ro`                 | 14    | Dashboard, Site Review, Assign, Schedule, Inventory, Verify, Consumers, Contractors, Installations, Staff                                                      |
-| `(consumer)/consumer`     | 10    | Dashboard, Address, Photo, Status, Help, Marketplace (Browse, Services, Book, Jobs, Job Detail)                                                                |
-| `(contractor)/contractor` | 14    | Dashboard, Installations, Install Detail, Pickup, Pre-Installation, Issues, Reading, Marketplace (Overview, Profile, Jobs, Job Detail)                         |
+| Route Group               | Pages | Key Pages                                                                                                                                                        |
+| ------------------------- | ----- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `(auth)`                  | 2     | Login, Register                                                                                                                                                  |
+| `(admin)/admin`           | 18    | Dashboard, Admins, ROs, Consumers, Sites, Master Data, Upload, Analytics, Marketplace (Services, Categories, UOMs, Pricing, SLA, Locations, Contractors, Jobs)   |
+| `(ro)/ro`                 | 14    | Dashboard, Site Review, Assign, Schedule, Inventory, Verify, Consumers, Contractors, Installations, Staff                                                        |
+| `(consumer)/consumer`     | 10    | Dashboard, Address, Photo, Status, Help, Marketplace (Browse, Services, Book, Jobs, Job Detail)                                                                  |
+| `(contractor)/contractor` | 15    | Dashboard, Installations, Install Detail, Pickup, Pre-Installation, Issues, Reading, Marketplace (Overview, Profile, Jobs, Job Detail, **Coverage Areas** 🆕)    |
 
 **GraphQL Queries/Mutations**: 14 files covering all modules  
-**Components**: 23 total (7 UI primitives, 4 shared, 12 marketplace-specific)  
-**Custom Hooks**: 15 total (useCamera, useGeoLocation, useQRScanner, useDashboardStats + 10 marketplace hooks)
+**Components**: 24 total (7 UI primitives, 5 shared incl. EnvBadge, 12 marketplace-specific)  
+**Custom Hooks**: 17 total (useCamera, useGeoLocation, useQRScanner, useDashboardStats + 12 marketplace hooks incl. `useMyContractorCoverageAreas`, `useUpdateMyCoverageAreas`)
 
 ---
 
@@ -858,12 +887,13 @@ user-service/src/
 
 | Metric                        | Value                        |
 | ----------------------------- | ---------------------------- |
-| **Total Backend Modules**     | 22 (registered in AppModule) |
-| **Total Resolvers**           | 31                           |
-| **Total Frontend Pages**      | 58                           |
-| **Total GraphQL Query Files** | 14                           |
-| **Database Schema Files**     | 16+                          |
-| **Enum Definitions**          | 178 values across 17 enums   |
+| **Total Backend Modules**     | 22 (registered in AppModule)                     |
+| **Total Resolvers**           | 31                                               |
+| **Total Frontend Pages**      | 59                                               |
+| **Total GraphQL Query Files** | 14                                               |
+| **Database Schema Files**     | 16+                                              |
+| **Enum Definitions**          | 181 values across 18 enums (incl. `mp_coverage_selection_type`) |
+| **Pending Migrations**        | `0014_sweet_silver_samurai.sql` (generated, not applied) |
 
 ### Module Status Summary
 
@@ -886,7 +916,7 @@ user-service/src/
 | ---------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------ |
 | Core Infrastructure (Auth, Users, RBAC)                          | 95%      | Fully functional, minor error handling issues                                                    |
 | Smart Meter Domain (Sites, Meters, Installations, Verifications) | 90%      | Complete state machines, audit logging, data isolation                                           |
-| Marketplace Platform                                             | 65%      | Logic complete but payments mock, SMS notifications unconnected, refunds not triggered           |
+| Marketplace Platform                                             | 70%      | Coverage areas + hierarchical search complete; payments mock, SMS notifications unconnected, refunds not triggered |
 | External Integrations                                            | 40%      | SMS/Email infrastructure built but under-connected; Cashfree not integrated; GCP storage missing |
 | Testing & Quality                                                | 5%       | No meaningful tests exist                                                                        |
-| **Overall Production Readiness**                                 | **~65%** | Core domain is solid; marketplace payments, billing, notifications, and testing are the blockers |
+| **Overall Production Readiness**                                 | **~68%** | Core domain is solid; marketplace payments, billing, notifications, and testing are the blockers |

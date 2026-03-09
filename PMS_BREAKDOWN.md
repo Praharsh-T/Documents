@@ -27,6 +27,17 @@
 - **Operational Grid**: Separated daily items (SLA, Jobs, Contractors, Subs, Import Logs) into a lower secondary layout.
 - **Integrated Pricing**: Merged `Pricing Configuration` into the `Service Creation Modal`. Creating or editing a service now simultaneously captures and executes mutations for Urban, Semi-Urban, and Rural pricing definitions.
 
+### Capability 0.3 — RO Management & Rating Privacy
+
+- **Validation Resilience**: Reinforced the `createRetailOutlet` flow with robust frontend error handling to capture and display database conflict exceptions (duplicate email/code).
+- **Admin Productivity**: Executed a UI cleanup across the Consumers and Sites modules, stripping away non-functional export buttons and redundant action menus to minimize cognitive load.
+- **Privacy-First Ratings**: Enhanced the `RatingSummary` query to dynamically aggregate and surface raw review comments while strictly sanitizing the data to remove all rater identifiers.
+
+### Capability 0.4 — Marketplace Transparency & Subscription UX
+
+- **Admin Go-Live Checklist**: Enhanced with granular readiness gates (SLA/Pricing) for marketplace activation.
+- **Subscription Plan Management**: Redesigned to highlight plan names as the primary identifier, improving clarity and usability.
+
 ---
 
 ## Epic 1 — Authentication & Authorization

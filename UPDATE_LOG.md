@@ -1,6 +1,41 @@
 # MESCOM Smart Meter System - Update Log
 
-**Last Updated:** 06 March 2026 (Auth Throttle Env-Gating & Ratings Status Rules)
+**Last Updated:** 09 March 2026 (Marketplace Expansion & UI Refinement)
+
+---
+
+## 📋 Latest Session Context (09 March 2026 — Marketplace Expansion & UI Refinement)
+
+### What Was Done This Session:
+
+#### **1. MARKETPLACE COMMISSION & QUOTAS**
+- **Service Commission**: Admins can now set a 0–30% commission per service. Jobs created automatically snapshot this commission and compute the `contractorPayout`.
+- **Job Quotas**: Subscription plans now support `maxJobsPerCycle`. Contractors are blocked from accepting new jobs if they hit their quota. Quota resets on renewal or admin override.
+
+#### **2. GO-LIVE READINESS & QR BADGES**
+- **Go-Live Checklist**: Multi-query dashboard widget checks if Categories, Services, SLAs, Plans, and Locations are ready for launch.
+- **Contractor QR Badge**: Public (unauthenticated) endpoint for scanning a contractor's physical QR code to verify their license and subscription status.
+
+#### **3. METER REPLACEMENT WORKFLOW**
+- Dedicated import path for "Replacement Consumers".
+- New `REPLACEMENT` installation type allows capturing old meter final readings (OCR-verified) before installing new meters.
+
+#### **4. CONSUMER SELF-REGISTRATION**
+- Public mutation for consumers to register via the mobile app.
+- Smart account linking: if an imported consumer uses the same phone number as a self-registered user, the accounts are merged at the "Send Link" stage to prevent duplicates.
+
+#### **5. UI CLEANUP & BUG FIXES**
+- **RO Creation Fix**: Corrected frontend error handling for duplicate email/code conflicts.
+- **Admin UI Polish**: Stripped non-functional buttons (Export, Edit, Add Site) from Consumer and Site pages.
+- **Anonymous Reviews**: Enhanced `RatingSummary` query to show aggregated review comments without exposing rater identities.
+
+**Files Changed:**
+- `user-service/src/modules/marketplace/ratings/ratings.service.ts`
+- `user-service/src/modules/marketplace/ratings/ratings.types.ts`
+- `web-frontend/src/app/(admin)/admin/ros/page.tsx`
+- `web-frontend/src/app/(admin)/admin/consumers/[id]/page.tsx`
+- `web-frontend/src/app/(admin)/admin/sites/[id]/page.tsx`
+- (And numerous others for Features 1–6)
 
 ---
 

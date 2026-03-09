@@ -853,6 +853,49 @@ user-service/src/
 | --- | ---------------------------------------- | --------------------------- | --------------------------------------------------------------------------------------------- |
 | 14  | **Deprecated mutation still active**     | `files.resolver.ts`         | Add `@Deprecated()` decorator with runtime warning                                            |
 | 15  | **`confirmPayment` sync/async mismatch** | `subscriptions.resolver.ts` | `getPaymentIntent()` is sync but used in async resolver — will break if storage becomes async |
+| 16  | **Phone not globally unique**            | `users.service.ts`          | `phone` uniqueness is only enforced for CONSUMER role. ADMIN/RO/CONTRACTOR can share phones. Add DB-level `UNIQUE` constraint or app-level check for all roles. |
+
+---
+
+## 8. Priority Feature Backlog (Next Up)
+
+### 8.1 Service Commission System
+- Admin configures commission rate (0–30%) per service when creating/editing
+- Default 0%. Schema: add `commissionPercent integer default 0` to `mp_services`
+- At job creation: snapshot `commissionPercent` in `jobs` table alongside `totalPriceSnapshot`
+- At job completion: calculate `contractorPayout = total * (1 - commission/100)`, store in job record
+- Association account receives the commission portion
+- Show commission field in Admin → Services create/edit modal
+- Show contractor payout in Job detail views (admin + contractor)
+
+### 8.2 Subscription Job Quota System
+- Admin can set optional `maxJobsPerCycle` (nullable integer) and `planName` (custom string) on subscription plans
+- Schema: add `maxJobsPerCycle integer nullable`, `planName varchar(100)` to `mp_subscription_plans`
+- On job ACCEPT by contractor: deduct 1 from their current quota regardless of future cancellation
+- Track `jobsUsedThisCycle integer default 0` on `mp_contractor_profile` (reset on renewal)
+- Gate job acceptance: if `remainingJobs <= 0` throw error
+- Show quota used/remaining on contractor Subscriptions page
+- Show quota details in plan cards (Admin and Contractor views)
+
+### 8.3 Contractor QR Badge
+- Generate a QR code pointing to `/contractor/profile/[qrProfileToken]` (token already exists as `qr_profile_token` in `mp_contractor_profile`)
+- Badge contains: name, mobile number, license number, subscription tier + validity
+- Frontend: downloadable/shareable card in Contractor → Profile page
+- Use `qrcode` npm package to render QR SVG/PNG
+
+### 8.4 Global SLA Fallback + Go-Live Checklist
+- Global SLA already implemented in `sla.service.ts:getCurrentSla()` — falls back automatically
+- **Gap**: Admin UI does not expose Global SLA configuration (no form/display on admin SLA page)
+- Add Global SLA config card on Admin → Marketplace → SLA page
+- Go-Live Checklist: Admin dashboard widget showing completion status of required setup steps:
+  1. At least 1 service created and active
+  2. Pricing configured for all active services
+  3. Global SLA is set
+  4. At least 1 subscription plan is active
+  5. At least 1 contractor has PREMIUM subscription
+  6. At least 1 location classified
+  7. At least 1 category exists
+- Show count of pending steps; link to respective config pages
 
 ---
 

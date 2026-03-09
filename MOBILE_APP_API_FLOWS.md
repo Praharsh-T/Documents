@@ -23,6 +23,8 @@
 
 Both consumer and contractor log in via **OTP on phone number**.
 
+**Phone Number Overlap Rule:** A single person **CAN** be both a consumer and a contractor using the EXACT SAME phone number. The system supports this because the login flow explicitly requires a `loginType` (either `CONSUMER` or `CONTRACTOR`) to distinguish which account the user is trying to access. There are separate rows in the `users` table for each role.
+
 ### Step 1 — Request OTP
 
 ```graphql
@@ -356,6 +358,38 @@ query ContractorReviews($contractorId: ID!, $page: Int, $limit: Int) {
   }
 }
 ```
+
+---
+
+#### View Public Badge (QR Scan)
+
+This API does **not** require authentication. It is meant to be called when a consumer scans a contractor's QR code.
+
+```graphql
+query ContractorPublicBadge($token: String!) {
+  contractorPublicBadge(token: $token) {
+    contractorId
+    contractorName
+    companyName
+    phone
+    licenseNumber
+    subscriptionType
+    subscriptionValidTill
+    isVerified
+  }
+}
+```
+
+**Input:**
+
+```json
+{
+  "token": "<qr-profile-token>"
+}
+```
+
+> `token` is embedded in the QR Code URL.
+> Used entirely to build trust and verify the contractor holds a valid background check/license and premium subscription.
 
 ---
 
@@ -794,6 +828,36 @@ mutation {
 > **Replaces** the full selection — send all desired service IDs each time.  
 > Validates that every ID is an active service. Invalid IDs → `BAD_REQUEST`.  
 > Contractor will only appear in consumer search for services they have selected **AND** that have pricing configured for their area **AND** they are PREMIUM with coverage areas set.
+
+---
+
+#### Step 3 — View Selected Services & Prices
+
+Contractors can view their selected services, including the **platform commission** and **area-based prices** determined by the Admins.
+
+```graphql
+query {
+  myContractorServices {
+    id
+    serviceId
+    serviceName
+    serviceCategory
+    isActive
+    commissionPercent
+    uom {
+      name
+      requiresQuantity
+    }
+    pricingMatrix {
+      areaType
+      price
+    }
+  }
+}
+```
+
+> **Returns:** A list of services currently offered by the contractor, showing the platform's cut (`commissionPercent`), and the matrix of prices broken down by `areaType` (URBAN, SEMI_URBAN, RURAL).
+> Useful for displaying on the contractor app so they know how much they will earn per job.
 
 ---
 

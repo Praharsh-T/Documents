@@ -6,6 +6,46 @@ This document tracks all changes made during development sessions. Update this f
 
 ---
 
+## Session: 09 March 2026 - Data Conflicts & Admin Sidebar
+
+### 1. Strict Phone and Contractor Validation
+**Problem:** A consumer and contractor could use the same phone number, but the strict DB constraints were throwing generic errors during contractor creation (`QueryFailedError`), or preventing a legitimate phone number from being used by a contractor if a consumer account had it.
+**Fix:**
+- Implemented application-level uniqueness checks in `contractors.service.ts` for `code`, `licenseNumber`, and `phone` strictly within the `contractors` table.
+- Added a `phone` + `role` compound check in the `users` table during contractor creation.
+- **The Rule:** A single phone number **CAN** be used to create both a `CONSUMER` account and a `CONTRACTOR` account. The system fully supports this overlap because the login flow relies on the `loginType` flag to determine which user record to fetch.
+
+### 3. RO Creation Duplicate Email/Code Fix
+**Problem:** Creating a Retail Outlet with an existing email or code showed a success message but didn't actually create the record because the frontend ignored the backend's `ConflictException`.
+**Fix:**
+- Updated `handleCreateRO` in `/admin/ros/page.tsx` to parse `graphQLErrors`.
+- Backend `RetailOutletsService.create` already handled the conflict, now the frontend displays the exact error message.
+
+### 4. Admin Consumers & Site UI Cleanup
+**Problem:** The Admin Consumers and Site detail pages had several non-functional or redundant buttons.
+**Fix:**
+- **Consumers List**: Removed "Export" and row-level "3-dots" action menu.
+- **Marketplace Rating Summary Enhancement**: Added `anonymousReviews` to `marketplaceRatingSummary` GraphQL query to return raw review comments while preserving privacy.
+- **Marketplace Go-Live Checklist Transparency**:
+    - Backend: Enhanced `getGoLiveChecklist` with Pricing and Service SLA gates.
+    - Backend: Refined step labels to distinguish between Essential Fallback (Global SLA) and Recommended Optimizations (Service SLAs).
+    - Frontend: Integrated the Checklist Widget directly into the Marketplace Management page.
+    - Frontend: Linked "Setup Flow" guide cards to real-time status data with visual checkmarks.
+    - Frontend: Added a prominent "Action Required" alert to the main Admin Dashboard for pending setup steps.
+- **Subscription Plans UI Refactor**:
+    - Redesigned plan cards to highlight **Plan Name** (e.g., PRO, STARTER) in a bold violet anchor box as the primary identifier.
+    - Improved visual hierarchy for pricing, discounts, and duration.
+- **Consumer Details**: Removed "Edit", "View Documents", and "Add New Site".
+- **Site Details**: Removed "Assign Contractor" form (made read-only) and redundant "View Consumer" button.
+
+### 5. Marketplace Rating Summary — Anonymous Reviews
+**Problem:** Consumers wanted to see their received reviews without violating the anonymity of the raters.
+**Fix:**
+- Added `anonymousReviews: string[]` to the `RatingSummary` GraphQL type.
+- Updated `RatingsService.getRatingSummary` to aggregate the raw comment strings into an array using PostgreSQL `ARRAY_AGG`, strictly excluding any rater metadata.
+
+---
+
 ## Session: 06 March 2026 - Auth Throttle Env-Gating & Ratings Status Rules
 
 ### 1. Login Throttle Disabled for Non-Production Environments

@@ -444,6 +444,238 @@ imports: [DatabaseModule, forwardRef(() => PaymentsModule)]
 | Refund SMS notifications to consumer | ❌ Not wired (TODO in jobs.service.ts) |
 | Job payment retry flow (re-book after failed payment) | ❌ Not implemented (FK unique constraint blocks re-insert) |
 
+---
+
+## 16. React Native / Mobile Integration
+
+### Available Mutations
+
+The backend **does not have** generic `createPayment` or `updatePayment` mutations. It has **two specific flows**:
+
+#### 1. Job Payment (Consumer)
+
+```graphql
+mutation InitiateMarketplacePayment($jobId: ID!) {
+  initiateMarketplacePayment(jobId: $jobId) {
+    paymentId      # Internal mp_payments.id
+    sessionId      # Cashfree payment_session_id (pass to SDK)
+    paymentLink    # nullable (legacy, ignore for SDK v5)
+    amount
+  }
+}
+```
+
+#### 2. Subscription Payment (Contractor)
+
+```graphql
+mutation InitiateSubscriptionUpgrade($input: InitiateSubscriptionUpgradeInput!) {
+  initiateSubscriptionUpgrade(input: $input) {
+    success
+    message
+    paymentIntent {
+      id           # Payment intent ID (for confirmSubscriptionPayment)
+      orderId      # Cashfree order ID (use this in CFSession)
+      amount
+      expiresAt    # 30-minute TTL
+      status
+    }
+  }
+}
+```
+
+**Input:**
+```typescript
+{
+  duration: "MONTHLY" | "QUARTERLY" | "YEARLY"
+  bankAccount?: {  // Optional, only if not set yet
+    accountNumber: string
+    ifscCode: string
+    accountHolderName: string
+    bankName: string
+  }
+}
+```
+
+### ⚠️ No Manual Update Needed
+
+Payment status is **automatically updated via webhook**. When Cashfree calls `POST /payments/cashfree/webhook`, the backend:
+1. Verifies HMAC signature
+2. Updates `mp_payments.status` to `SUCCESS`/`FAILED`
+3. For subscriptions: calls `finalizeSubscriptionUpgrade()` to activate PREMIUM
+4. For jobs: updates job status to `REQUESTED`
+
+**The mobile app should NOT call any update mutation after payment.** Just handle the `onVerify` callback.
+
+### React Native Hook Implementation
+
+```typescript
+import { useMutation } from "@apollo/client";
+import { CFEnvironment, CFSession } from "cashfree-pg-api-contract";
+import {
+  CFErrorResponse,
+  CFPaymentGatewayService,
+} from "react-native-cashfree-pg-sdk";
+import { gql } from "@apollo/client";
+
+// GraphQL Mutations
+const INITIATE_JOB_PAYMENT = gql`
+  mutation InitiateMarketplacePayment($jobId: ID!) {
+    initiateMarketplacePayment(jobId: $jobId) {
+      paymentId
+      sessionId
+      amount
+    }
+  }
+`;
+
+const INITIATE_SUBSCRIPTION_UPGRADE = gql`
+  mutation InitiateSubscriptionUpgrade($input: InitiateSubscriptionUpgradeInput!) {
+    initiateSubscriptionUpgrade(input: $input) {
+      success
+      message
+      paymentIntent {
+        id
+        orderId
+        amount
+        expiresAt
+      }
+    }
+  }
+`;
+
+type JobPaymentInput = {
+  type: "JOB";
+  jobId: string;
+};
+
+type SubscriptionPaymentInput = {
+  type: "SUBSCRIPTION";
+  duration: "MONTHLY" | "QUARTERLY" | "YEARLY";
+  bankAccount?: {
+    accountNumber: string;
+    ifscCode: string;
+    accountHolderName: string;
+    bankName: string;
+  };
+};
+
+type PaymentInput = JobPaymentInput | SubscriptionPaymentInput;
+
+const usePayment = () => {
+  const [initiateJobPayment] = useMutation(INITIATE_JOB_PAYMENT);
+  const [initiateSubscriptionUpgrade] = useMutation(INITIATE_SUBSCRIPTION_UPGRADE);
+
+  const initiatePayment = async (input: PaymentInput) => {
+    let sessionId: string;
+    let orderId: string;
+
+    if (input.type === "JOB") {
+      // Job Payment Flow
+      const { data } = await initiateJobPayment({
+        variables: { jobId: input.jobId },
+      });
+
+      sessionId = data?.initiateMarketplacePayment.sessionId;
+      orderId = data?.initiateMarketplacePayment.paymentId; // Use paymentId as orderId
+    } else {
+      // Subscription Payment Flow
+      const { data } = await initiateSubscriptionUpgrade({
+        variables: {
+          input: {
+            duration: input.duration,
+            bankAccount: input.bankAccount,
+          },
+        },
+      });
+
+      if (!data?.initiateSubscriptionUpgrade.success) {
+        throw new Error(
+          data?.initiateSubscriptionUpgrade.message || "Subscription initiation failed"
+        );
+      }
+
+      const intent = data.initiateSubscriptionUpgrade.paymentIntent;
+      sessionId = intent.orderId; // orderId is the Cashfree order ID
+      orderId = intent.orderId;
+    }
+
+    if (!sessionId || !orderId) {
+      throw new Error("Invalid payment session or order ID");
+    }
+
+    // Initialize Cashfree Session
+    const session = new CFSession(
+      sessionId,
+      orderId,
+      __DEV__ ? CFEnvironment.SANDBOX : CFEnvironment.PRODUCTION
+    );
+
+    return new Promise<{ success: boolean; orderID: string }>(
+      (resolve, reject) => {
+        CFPaymentGatewayService.setCallback({
+          onVerify: async (verifiedOrderID: string) => {
+            // Webhook handles backend update — no manual mutation needed
+            console.log("✅ Payment verified:", verifiedOrderID);
+            resolve({ success: true, orderID: verifiedOrderID });
+          },
+          onError: (error: CFErrorResponse, failedOrderID: string) => {
+            console.error(
+              "❌ Payment Error:",
+              error.getMessage(),
+              "Order:",
+              failedOrderID
+            );
+            reject(error);
+          },
+        });
+
+        // Start Cashfree payment flow
+        CFPaymentGatewayService.doWebPayment(session);
+      }
+    );
+  };
+
+  return { initiatePayment };
+};
+
+export default usePayment;
+```
+
+### Usage Examples
+
+**Consumer Job Payment:**
+```typescript
+const { initiatePayment } = usePayment();
+
+await initiatePayment({
+  type: "JOB",
+  jobId: "uuid-of-job",
+});
+```
+
+**Contractor Subscription Upgrade:**
+```typescript
+await initiatePayment({
+  type: "SUBSCRIPTION",
+  duration: "MONTHLY",
+  bankAccount: {
+    accountNumber: "1234567890",
+    ifscCode: "SBIN0001234",
+    accountHolderName: "John Doe",
+    bankName: "SBI",
+  },
+});
+```
+
+### Key Integration Points
+
+| Aspect | Implementation |
+|---|---|
+| **Environment Detection** | Use `__DEV__` or `NODE_ENV` to switch between `SANDBOX` and `PRODUCTION` |
+| **Session Creation** | Pass `sessionId` (from backend) + `orderId` to `CFSession` constructor |
+| **Callback Handling** | Use `onVerify` to handle success — webhook updates DB automatically |
+| **Error Handling** | `onError` receives `CFErrorResponse` with failure details |
+| **No Manual Update** | Do NOT call any backend mutation after payment — webhook handles it |
 
 ---
 

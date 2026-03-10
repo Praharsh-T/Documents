@@ -6,6 +6,19 @@ This document tracks all changes made during development sessions. Update this f
 
 ---
 
+## Session: 10 March 2026 — Final Cashfree integration & FK fixes
+
+- Integrated Cashfree SDK for Order creation and Refunds, with HMAC-signed webhook handling.
+- Applied migrations 0021 and 0022 locally to support subscription payments and plan metadata.
+- Fixed FK root cause: `mp_payments.user_id` now uses `contractors.userId` (resolved before inserts).
+- Ensured `qrProfileToken` is generated on all contractor profile creation paths and added a one-off backfill SQL for remote DBs.
+- `simulatePaymentSuccess` resolver/service updated: production-block enforced, ownership checks added for non-admins.
+
+Note: Run `pnpm db:migrate` on remote/dev DB and execute the backfill:
+```sql
+UPDATE mp_contractor_profile SET qr_profile_token = gen_random_uuid() WHERE qr_profile_token IS NULL;
+```
+
 ## Session: 10 March 2026 - Cashfree Integration & Contractor Logic Refinement
 
 ### 1. Cashfree Payment Gateway Integration

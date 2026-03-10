@@ -7,7 +7,7 @@
 ## 1. Project Identity
 
 **Name:**  Smart Meter Installation Management System  
-**Client:**  (Mangalore Electricity Supply Company) / **KSLECA** branding in production  
+**Client:**  (MSma) / **KSLECA** branding in production  
 **Type:** Government-grade, lifecycle-governed, multi-role enterprise platform  
 **Purpose:** Digitise the complete lifecycle of smart meter installation — consumer onboarding → site verification → meter assignment → contractor installation → RO verification → billing handoff
 
@@ -24,7 +24,7 @@
 | File Storage | Local ✅ · Azure Blob ✅ · GCP ❌ (not implemented — throws runtime error) |
 | SMS | Fast2SMS (DLT templates) — infrastructure built, partially connected |
 | Email | AWS SES — infrastructure built, partially connected |
-| Payments | Cashfree — **mock only**, not integrated |
+| Payments | Cashfree — integrated (Order creation, webhook verification, refunds). Ensure `CASHFREE_APP_ID` / `CASHFREE_SECRET` set in production env. |
 | Package Manager | pnpm throughout |
 
 **Dirs:** `user-service/` (NestJS backend) · `web-frontend/` (Next.js frontend)

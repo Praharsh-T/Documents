@@ -43,6 +43,14 @@
 - `user-service/src/modules/marketplace/services-catalog/services.service.ts`
 - `web-frontend/src/app/(admin)/admin/marketplace/payments/page.tsx`
 
+**Additional notes (10 March 2026):**
+- Migrations `0021` and `0022` were generated and applied locally to allow `job_id` to be nullable for subscription payments and to add `plan_id`/`plan_version` fields.
+- Remote/dev databases must run `pnpm db:migrate` after deployment.
+- If the remote DB contains contractor profiles with null `qr_profile_token`, run:
+```sql
+UPDATE mp_contractor_profile SET qr_profile_token = gen_random_uuid() WHERE qr_profile_token IS NULL;
+```
+
 ---
 
 ## 📋 Latest Session Context (06 March 2026 — Auth Throttle Env-Gating & Ratings Status Rules)

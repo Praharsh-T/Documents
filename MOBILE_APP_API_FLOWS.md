@@ -2,7 +2,7 @@
 
 **For:** Consumer App & Contractor App  
 **Backend:** `user-service` (NestJS GraphQL)  
-**Last Updated:** 03 March 2026  
+**Last Updated:** 10 March 2026  
 **Base GraphQL URL:** `https://connectshakti.klonec.cloud/graphql`  
 **Auth:** All requests need `Authorization: Bearer <jwt_token>` header
 
@@ -195,19 +195,20 @@ query ServicesByCategory($areaType: AreaType!) {
       id
       name
       code
-      isFreeAvailable
     }
     services {
       id
       name
       description
-      currentPrice
-      isFreeAvailable
+      currentPrice # Mapped based on areaType input
+      urbanPrice # Fixed Urban Price
+      semiUrbanPrice # Fixed Semi-Urban Price
+      ruralPrice # Fixed Rural Price
+      commissionPercent # Service commission for total payout calculation
       category {
         id
         name
         code
-        isFreeAvailable
       }
       uom {
         id
@@ -233,7 +234,10 @@ query ServicesWithPrices($areaType: AreaType!) {
     name
     description
     currentPrice
-    isFreeAvailable
+    urbanPrice
+    semiUrbanPrice
+    ruralPrice
+    commissionPercent
     category {
       id
       name
@@ -307,6 +311,7 @@ query SearchContractors($input: ContractorSearchInput!) {
 3. Have selected a coverage area that **includes the consumer's location** — hierarchical match: contractor who selected the consumer's district covers all villages in it; one who selected the sub-district covers all villages in it; one who selected the exact village covers that village only
 4. Offer the selected service
 5. Have pricing configured for the location's area type
+6. **Quota Check**: Have not reached their `maxJobsPerCycle` (as per their subscription plan).
 
 **Save:** Selected contractor's `contractorId` = **`contractorId`** (for booking).
 
@@ -401,8 +406,8 @@ mutation CreateJob($input: CreateJobInput!) {
     jobId
     jobNumber
     amount
-    paymentSessionId
-    paymentUrl
+    paymentSessionId # Used by Cashfree Mobile SDK
+    paymentUrl # Redirect URL for web-based checkout
   }
 }
 ```
@@ -649,7 +654,7 @@ mutation RateContractor($input: CreateRatingInput!) {
 ## 3. Contractor Flow
 
 ```
-[Admin creates marketplace profile once]
+[Profile auto-created on first access]
   → Contractor upgrades to PREMIUM
   → Contractor sets Coverage Areas (district / sub-district / village)
   → Contractor selects Services they offer
@@ -663,30 +668,11 @@ mutation RateContractor($input: CreateRatingInput!) {
   → Manage Subscription
 ```
 
-> **Pre-requisite:** Admin must have created a contractor marketplace profile (one-time setup). After that, the contractor themselves selects their coverage areas and services. **PREMIUM subscription is required to appear in consumer searches.**
+> **Pre-requisite:** Contractor marketplace profiles are lazy-initialized. A profile is created automatically the first time a contractor attempts to manage their services or coverage areas. **PREMIUM subscription is required to appear in consumer searches.**
 
 ---
 
-### Admin Setup for a Contractor _(one-time — Admin creates the profile only)_
-
-> These mutations require **ADMIN** or **SUPER_ADMIN** role.
-
-#### Create Marketplace Profile
-
-```graphql
-mutation {
-  createContractorMarketplaceProfile(
-    input: { contractorId: "<contractor-uuid>" }
-  ) {
-    id
-    contractorId
-    subscriptionType
-    isMarketplaceActive
-  }
-}
-```
-
-> That's it from Admin's side. Location assignment is no longer Admin-managed — the contractor sets their own coverage areas after upgrading to PREMIUM (see below).
+> **Auto-Provisioning**: Manual profile creation is no longer required. The system automatically initializes a contractor's marketplace profile the first time they attempt to set coverage areas or services. This ensures a seamless onboarding experience.
 
 ---
 
@@ -759,6 +745,7 @@ mutation UpdateCoverageAreas($input: UpdateCoverageAreasInput!) {
   }
 }
 ```
+
 > **Role:** `CONTRACTOR` — uses JWT, contractor can only update their own  
 > **PREMIUM required** — throws `FORBIDDEN` if subscription is FREE  
 > `referenceCode` for DISTRICT = `districtCode` from `marketplaceDistricts`; for SUB_DISTRICT = `subDistrictCode` from `marketplaceSubDistricts`; for VILLAGE = village `id` UUID from `marketplaceVillages`  
@@ -799,7 +786,10 @@ query {
       id
       name
       description
-      isFreeAvailable
+      urbanPrice
+      semiUrbanPrice
+      ruralPrice
+      commissionPercent
       uom {
         name
         requiresQuantity
@@ -1161,8 +1151,9 @@ mutation InitiateUpgrade($input: InitiateSubscriptionUpgradeInput!) {
       amount
       duration
       status
-      paymentLink
-      orderId
+      sessionId # Cashfree Session ID for Mobile Checkout
+      paymentUrl # Cashfree Payment Link
+      orderId # System Gateway Order ID
       expiresAt
     }
   }
@@ -1254,7 +1245,7 @@ mutation {
 }
 ```
 
-> ⚠️ In production this confirm step will be called **only by the Cashfree webhook** after verifying payment signature — never by the app directly.
+> ⚠️ In production this confirm step is handled **automatically by the Cashfree webhook**. The app should poll `mySubscriptionStatus` to detect when the upgrade is active.
 
 ---
 
@@ -1276,13 +1267,11 @@ query SubHistory {
 
 ---
 
-#### ⚠️ Production TODOs (Subscription)
+#### ⚠️ Production Readiness Checklist
 
-| #   | Issue                                                     | Where                                                              | What needs to be done                                                                                                                   |
-| --- | --------------------------------------------------------- | ------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
-| 1   | Payment intents stored **in-memory**                      | `subscriptions.service.ts` — `paymentIntents Map`                  | Move to a DB table or Redis so intents survive server restarts                                                                          |
-| 2   | `paymentLink` is a **mock URL**                           | `initiateUpgrade()` — hardcoded `https://payments.example.com/...` | Replace with real Cashfree Order API call to get a live checkout URL                                                                    |
-| 3   | `confirmSubscriptionPayment` callable by **app directly** | `subscriptions.resolver.ts`                                        | In production, confirmation must only happen via Cashfree **webhook** (after verifying signature) — never trust the app to self-confirm |
+1. **Idempotency**: `mp_payments` has a unique index on `gateway_order_id` to prevent double-charging.
+2. **Webhook Security**: All Cashfree callbacks are verified using HMAC-SHA256 signatures.
+3. **Plan History**: All purchases are logged in `contractor_subscriptions` for financial audit.
 
 ---
 
@@ -1498,4 +1487,4 @@ Show countdown timers in the app for active deadlines. When a deadline is within
 
 ---
 
-_This document reflects the actual implemented backend resolvers and services as of 26 February 2026._
+_This document reflects the actual implemented backend resolvers and services as of 10 March 2026._

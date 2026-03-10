@@ -7,6 +7,7 @@ This document covers the Consumer and Contractor APIs for the SmartMeter Marketp
 ---
 
 ## Table of Contents
+
 1. [Authentication](#authentication)
 2. [Consumer APIs](#consumer-apis)
 3. [Contractor APIs](#contractor-apis)
@@ -19,6 +20,7 @@ This document covers the Consumer and Contractor APIs for the SmartMeter Marketp
 ## Authentication
 
 All marketplace APIs require a JWT token in the Authorization header:
+
 ```
 Authorization: Bearer <token>
 ```
@@ -26,6 +28,7 @@ Authorization: Bearer <token>
 ### Consumer Login (OTP-based)
 
 **Step 1: Request OTP**
+
 ```graphql
 mutation RequestLoginOtp($input: RequestLoginOtpInput!) {
   requestLoginOtp(input: $input) {
@@ -44,6 +47,7 @@ mutation RequestLoginOtp($input: RequestLoginOtpInput!) {
 ```
 
 **Step 2: Verify OTP**
+
 ```graphql
 mutation VerifyLoginOtp($input: VerifyLoginOtpInput!) {
   verifyLoginOtp(input: $input) {
@@ -79,29 +83,41 @@ Same as consumer, but with `loginType: "CONTRACTOR"`
 ### 1. Browse Services
 
 #### Get Services by Category
-Returns services grouped by category with current prices for the consumer's area type.
+
+Returns services grouped by category with tiered prices and commission details.
 
 ```graphql
 query GetMarketplaceServicesByCategory($areaType: MarketplaceAreaType!) {
   marketplaceServicesByCategory(areaType: $areaType) {
-    category
+    category {
+      id
+      name
+      code
+      displayOrder
+    }
     services {
       id
       name
       description
-      category
-      uom
-      isPremiumOnly
       currentPrice
+      urbanPrice
+      semiUrbanPrice
+      ruralPrice
+      commissionPercent
+      uomName
+      requiresQuantity
     }
   }
 }
+```
 
 # Variables
+
 {
-  "areaType": "URBAN"  # URBAN | SEMI_URBAN | RURAL
+"areaType": "URBAN" # Determines which price is mapped to 'currentPrice'
 }
-```
+
+````
 
 #### Get Services with Prices
 ```graphql
@@ -116,11 +132,12 @@ query GetMarketplaceServicesWithPrices($areaType: MarketplaceAreaType!) {
     currentPrice
   }
 }
-```
+````
 
 ### 2. Location Selection
 
 #### Get States
+
 ```graphql
 query GetMarketplaceStates {
   marketplaceStates {
@@ -131,6 +148,7 @@ query GetMarketplaceStates {
 ```
 
 #### Get Districts
+
 ```graphql
 query GetMarketplaceDistricts($stateCode: String!) {
   marketplaceDistricts(stateCode: $stateCode) {
@@ -142,6 +160,7 @@ query GetMarketplaceDistricts($stateCode: String!) {
 ```
 
 #### Get Sub-Districts
+
 ```graphql
 query GetMarketplaceSubDistricts($districtCode: String!) {
   marketplaceSubDistricts(districtCode: $districtCode) {
@@ -153,9 +172,13 @@ query GetMarketplaceSubDistricts($districtCode: String!) {
 ```
 
 #### Get Villages (Consumer's location selection)
+
 ```graphql
 query GetMarketplaceVillages($districtCode: String!, $subDistrictCode: String) {
-  marketplaceVillages(districtCode: $districtCode, subDistrictCode: $subDistrictCode) {
+  marketplaceVillages(
+    districtCode: $districtCode
+    subDistrictCode: $subDistrictCode
+  ) {
     id
     code
     name
@@ -210,6 +233,7 @@ query SearchMarketplaceContractors($input: ContractorSearchInput!) {
 ### 4. View Contractor Profile & Reviews
 
 #### Get Contractor Profile
+
 ```graphql
 query GetMarketplaceContractorProfile($contractorId: ID!) {
   marketplaceContractorProfile(contractorId: $contractorId) {
@@ -229,9 +253,18 @@ query GetMarketplaceContractorProfile($contractorId: ID!) {
 ```
 
 #### Get Contractor Reviews
+
 ```graphql
-query GetMarketplaceContractorReviews($contractorId: ID!, $page: Int, $limit: Int) {
-  marketplaceContractorReviews(contractorId: $contractorId, page: $page, limit: $limit) {
+query GetMarketplaceContractorReviews(
+  $contractorId: ID!
+  $page: Int
+  $limit: Int
+) {
+  marketplaceContractorReviews(
+    contractorId: $contractorId
+    page: $page
+    limit: $limit
+  ) {
     items {
       id
       jobId
@@ -282,6 +315,7 @@ mutation CreateMarketplaceJob($input: CreateJobInput!) {
 ```
 
 **Response:**
+
 ```json
 {
   "data": {
@@ -443,6 +477,7 @@ mutation CreateMarketplaceRating($input: CreateRatingInput!) {
 ### 11. Payment & Refund Status
 
 #### Get Payment Details
+
 ```graphql
 query GetMarketplacePaymentByJob($jobId: ID!) {
   marketplacePaymentByJob(jobId: $jobId) {
@@ -460,6 +495,7 @@ query GetMarketplacePaymentByJob($jobId: ID!) {
 ```
 
 #### Get Refund Status
+
 ```graphql
 query GetMarketplaceRefundByJob($jobId: ID!) {
   marketplaceRefundByJob(jobId: $jobId) {
@@ -709,6 +745,7 @@ query GetMarketplaceContractorServices($contractorId: ID!) {
 ## Common Types
 
 ### Job Status Enum
+
 ```typescript
 enum JobStatus {
   PAYMENT_PENDING   // Job created, awaiting payment
@@ -725,6 +762,7 @@ enum JobStatus {
 ```
 
 ### Area Type Enum
+
 ```typescript
 enum MarketplaceAreaType {
   URBAN
@@ -734,6 +772,7 @@ enum MarketplaceAreaType {
 ```
 
 ### OTP Type Enum
+
 ```typescript
 enum OtpType {
   START      // To start the job
@@ -742,14 +781,16 @@ enum OtpType {
 ```
 
 ### Pagination Input
+
 ```typescript
 interface PaginationInput {
-  page: number;   // Default: 1
-  limit: number;  // Default: 20, Max: 100
+  page: number; // Default: 1
+  limit: number; // Default: 20, Max: 100
 }
 ```
 
 ### Pagination Response
+
 ```typescript
 interface Pagination {
   page: number;
@@ -784,25 +825,25 @@ All errors are returned in the standard GraphQL format:
 
 ### Common Error Codes
 
-| Code | Description |
-|------|-------------|
-| `UNAUTHENTICATED` | Missing or invalid JWT token |
-| `FORBIDDEN` | User doesn't have required role |
-| `NOT_FOUND` | Resource not found |
-| `BAD_REQUEST` | Invalid input data |
-| `CONFLICT` | Action conflicts with current state |
+| Code              | Description                         |
+| ----------------- | ----------------------------------- |
+| `UNAUTHENTICATED` | Missing or invalid JWT token        |
+| `FORBIDDEN`       | User doesn't have required role     |
+| `NOT_FOUND`       | Resource not found                  |
+| `BAD_REQUEST`     | Invalid input data                  |
+| `CONFLICT`        | Action conflicts with current state |
 
 ### Job-Specific Errors
 
-| Error | Cause | Solution |
-|-------|-------|----------|
-| "Job is not in PAYMENT_PENDING status" | Trying to pay for already-paid job | Check job status first |
-| "Job is not in REQUESTED status" | Trying to accept/reject non-pending job | Refresh job list |
-| "Job is not in ACCEPTED status" | Trying to start non-accepted job | Accept job first |
-| "Location not found or not classified" | Location doesn't exist or isn't ready | Contact admin |
-| "No pricing configured" | Service doesn't have pricing for area | Contact admin |
-| "Invalid OTP" | Wrong OTP code | Get correct OTP from consumer |
-| "OTP expired" | OTP validity (10 min) expired | Generate new OTP |
+| Error                                  | Cause                                   | Solution                      |
+| -------------------------------------- | --------------------------------------- | ----------------------------- |
+| "Job is not in PAYMENT_PENDING status" | Trying to pay for already-paid job      | Check job status first        |
+| "Job is not in REQUESTED status"       | Trying to accept/reject non-pending job | Refresh job list              |
+| "Job is not in ACCEPTED status"        | Trying to start non-accepted job        | Accept job first              |
+| "Location not found or not classified" | Location doesn't exist or isn't ready   | Contact admin                 |
+| "No pricing configured"                | Service doesn't have pricing for area   | Contact admin                 |
+| "Invalid OTP"                          | Wrong OTP code                          | Get correct OTP from consumer |
+| "OTP expired"                          | OTP validity (10 min) expired           | Generate new OTP              |
 
 ---
 

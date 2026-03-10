@@ -1,41 +1,47 @@
 # MESCOM Smart Meter System - Update Log
 
-**Last Updated:** 09 March 2026 (Marketplace Expansion & UI Refinement)
+**Last Updated:** 10 March 2026 (Cashfree Integration & Contractor Logic Refinement)
 
 ---
 
-## 📋 Latest Session Context (09 March 2026 — Marketplace Expansion & UI Refinement)
+## 📋 Latest Session Context (10 March 2026 — Cashfree Integration & Contractor Logic Refinement)
 
 ### What Was Done This Session:
 
-#### **1. MARKETPLACE COMMISSION & QUOTAS**
-- **Service Commission**: Admins can now set a 0–30% commission per service. Jobs created automatically snapshot this commission and compute the `contractorPayout`.
-- **Job Quotas**: Subscription plans now support `maxJobsPerCycle`. Contractors are blocked from accepting new jobs if they hit their quota. Quota resets on renewal or admin override.
+#### **1. CASHFREE PAYMENT GATEWAY (REAL INTEGRATION)**
 
-#### **2. GO-LIVE READINESS & QR BADGES**
-- **Go-Live Checklist**: Multi-query dashboard widget checks if Categories, Services, SLAs, Plans, and Locations are ready for launch.
-- **Contractor QR Badge**: Public (unauthenticated) endpoint for scanning a contractor's physical QR code to verify their license and subscription status.
+- **Cashfree SDK**: Replaced mock payments with real Order and Refund flows using the official `cashfree-pg` SDK.
+- **Webhook Security**: Implemented HMAC signature verification for the Cashfree Webhook endpoint to ensure data integrity.
+- **Automated Upgrades**: Subscription upgrades now happen instantly upon payment confirmation via webhook background processing.
+- **Refund Management**: Enabled Admin-initiated refunds directly from the Job Detail view.
 
-#### **3. METER REPLACEMENT WORKFLOW**
-- Dedicated import path for "Replacement Consumers".
-- New `REPLACEMENT` installation type allows capturing old meter final readings (OCR-verified) before installing new meters.
+#### **2. DISCOVERY & QUOTA ENFORCEMENT**
 
-#### **4. CONSUMER SELF-REGISTRATION**
-- Public mutation for consumers to register via the mobile app.
-- Smart account linking: if an imported consumer uses the same phone number as a self-registered user, the accounts are merged at the "Send Link" stage to prevent duplicates.
+- **Search Filtering**: Contractors who hit their job quota (Premium plans) are now automatically hidden from consumer search results.
+- **Strict Free Tier**: Re-enforced strict marketplace blocking for FREE tier users while preserving their job counter history.
 
-#### **5. UI CLEANUP & BUG FIXES**
-- **RO Creation Fix**: Corrected frontend error handling for duplicate email/code conflicts.
-- **Admin UI Polish**: Stripped non-functional buttons (Export, Edit, Add Site) from Consumer and Site pages.
-- **Anonymous Reviews**: Enhanced `RatingSummary` query to show aggregated review comments without exposing rater identities.
+#### **3. CONTRACTOR CREATION & HIERARCHY**
+
+- **Duplicate Validation**: Added explicit checks for existing emails in the `users` table during contractor creation to prevent generic DB errors.
+- **RO Linking**: Automatically set `parentRoId` and `divisionId` for contractors created by Retail Outlets.
+
+#### **4. API CATALOG ENHANCEMENT**
+
+- **Tiered Pricing**: Enhanced `marketplaceServicesByCategory` to return Rural, Urban, and Semi-Urban prices simultaneously for every service.
+- **Commission Percent**: Included service commissions in the public catalog API.
+
+#### **5. FINANCIAL TRANSPARENCY**
+
+- **Admin Ledger**: Created `/admin/marketplace/payments` page to track the status of all marketplace financial transactions.
 
 **Files Changed:**
-- `user-service/src/modules/marketplace/ratings/ratings.service.ts`
-- `user-service/src/modules/marketplace/ratings/ratings.types.ts`
-- `web-frontend/src/app/(admin)/admin/ros/page.tsx`
-- `web-frontend/src/app/(admin)/admin/consumers/[id]/page.tsx`
-- `web-frontend/src/app/(admin)/admin/sites/[id]/page.tsx`
-- (And numerous others for Features 1–6)
+
+- `user-service/src/modules/payments/cashfree.service.ts`
+- `user-service/src/modules/payments/payments.service.ts`
+- `user-service/src/modules/marketplace/subscriptions/subscriptions.service.ts`
+- `user-service/src/modules/marketplace/contractors/contractor-profile.service.ts`
+- `user-service/src/modules/marketplace/services-catalog/services.service.ts`
+- `web-frontend/src/app/(admin)/admin/marketplace/payments/page.tsx`
 
 ---
 

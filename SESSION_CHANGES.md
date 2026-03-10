@@ -1,46 +1,102 @@
 # Session Changes Log
 
-**Last Updated:** 06 March 2026
+**Last Updated:** 10 March 2026
 
 This document tracks all changes made during development sessions. Update this file as changes are made.
+
+---
+
+## Session: 10 March 2026 - Cashfree Integration & Contractor Logic Refinement
+
+### 1. Cashfree Payment Gateway Integration
+
+**Problem:** The marketplace lacked a real payment gateway integration, relying on mock flows.
+**Fix:**
+
+- **Backend**: Implemented `CashfreeService` using the official `cashfree-pg` SDK for Order creation and Refund management.
+- **Webhooks**: Implemented `CashfreeWebhookController` with robust HMAC signature verification to handle asynchronous payment status updates.
+- **Subscriptions**: Connected `SubscriptionsService` to the webhook flow. Premium upgrades now happen automatically upon payment confirmation.
+- **Jobs**: Integrated `initiateJobPayment` in `PaymentsService` to handle consumer job bookings.
+
+### 2. Job Quota & Contractor Discovery Optimization
+
+**Problem:** Contractors were exhausting their quotas but still appearing in search results, leading to a poor consumer experience.
+**Fix:**
+
+- **Search Filtering**: Updated `ContractorProfileService.searchContractors` to join with subscription plans and strictly exclude contractors who have hit their `maxJobsPerCycle`.
+- **FREE Tier Strictness**: Reverted temporary "free job slots" and ensured `FREE` users are strictly blocked from marketplace features.
+- **Persistent Counters**: Ensured `jobsUsedThisCycle` does NOT reset when a user downgrades to `FREE`, preserving historical usage.
+
+### 3. Contractor Creation Hierarchy & Bug Fix
+
+**Problem:** Retail Outlets (ROs) encountered `Internal Server Error` when creating contractors with existing emails, and the RO-Contractor relationship wasn't being tracked.
+**Fix:**
+
+- **Validation**: Added explicit duplicate email checks in `ContractorsService.create` with user-friendly error messages.
+- **Hierarchy**: Automatically set `parentRoId` and `divisionId` when an RO creates a contractor.
+- **Normalization**: Enforced lowercase emails for consistency.
+
+### 4. Marketplace Catalog API Enhancement
+
+**Problem:** The `marketplaceServicesByCategory` API only provided the active price for the specific area requested, making it hard for the UI to show a full pricing matrix.
+**Fix:**
+
+- **Pricing Matrix**: Updated the catalog response to include `urbanPrice`, `semiUrbanPrice`, and `ruralPrice` for every service simultaneously using aliased SQL joins.
+- **Commission**: Added `commissionPercent` to the public catalog API.
+
+### 5. Admin Financial Transparency
+
+**Problem:** Admins had no way to track payments or initiate refunds.
+**Fix:**
+
+- **Refund Action**: Added "Initiate Refund" to the Admin Job Detail view.
+- **Financial Ledger**: Created a dedicated `AdminPaymentsPage` displaying a master list of all payment and refund transactions with real-time status.
 
 ---
 
 ## Session: 09 March 2026 - Data Conflicts & Admin Sidebar
 
 ### 1. Strict Phone and Contractor Validation
+
 **Problem:** A consumer and contractor could use the same phone number, but the strict DB constraints were throwing generic errors during contractor creation (`QueryFailedError`), or preventing a legitimate phone number from being used by a contractor if a consumer account had it.
 **Fix:**
+
 - Implemented application-level uniqueness checks in `contractors.service.ts` for `code`, `licenseNumber`, and `phone` strictly within the `contractors` table.
 - Added a `phone` + `role` compound check in the `users` table during contractor creation.
 - **The Rule:** A single phone number **CAN** be used to create both a `CONSUMER` account and a `CONTRACTOR` account. The system fully supports this overlap because the login flow relies on the `loginType` flag to determine which user record to fetch.
 
 ### 3. RO Creation Duplicate Email/Code Fix
+
 **Problem:** Creating a Retail Outlet with an existing email or code showed a success message but didn't actually create the record because the frontend ignored the backend's `ConflictException`.
 **Fix:**
+
 - Updated `handleCreateRO` in `/admin/ros/page.tsx` to parse `graphQLErrors`.
 - Backend `RetailOutletsService.create` already handled the conflict, now the frontend displays the exact error message.
 
 ### 4. Admin Consumers & Site UI Cleanup
+
 **Problem:** The Admin Consumers and Site detail pages had several non-functional or redundant buttons.
 **Fix:**
+
 - **Consumers List**: Removed "Export" and row-level "3-dots" action menu.
 - **Marketplace Rating Summary Enhancement**: Added `anonymousReviews` to `marketplaceRatingSummary` GraphQL query to return raw review comments while preserving privacy.
 - **Marketplace Go-Live Checklist Transparency**:
-    - Backend: Enhanced `getGoLiveChecklist` with Pricing and Service SLA gates.
-    - Backend: Refined step labels to distinguish between Essential Fallback (Global SLA) and Recommended Optimizations (Service SLAs).
-    - Frontend: Integrated the Checklist Widget directly into the Marketplace Management page.
-    - Frontend: Linked "Setup Flow" guide cards to real-time status data with visual checkmarks.
-    - Frontend: Added a prominent "Action Required" alert to the main Admin Dashboard for pending setup steps.
+  - Backend: Enhanced `getGoLiveChecklist` with Pricing and Service SLA gates.
+  - Backend: Refined step labels to distinguish between Essential Fallback (Global SLA) and Recommended Optimizations (Service SLAs).
+  - Frontend: Integrated the Checklist Widget directly into the Marketplace Management page.
+  - Frontend: Linked "Setup Flow" guide cards to real-time status data with visual checkmarks.
+  - Frontend: Added a prominent "Action Required" alert to the main Admin Dashboard for pending setup steps.
 - **Subscription Plans UI Refactor**:
-    - Redesigned plan cards to highlight **Plan Name** (e.g., PRO, STARTER) in a bold violet anchor box as the primary identifier.
-    - Improved visual hierarchy for pricing, discounts, and duration.
+  - Redesigned plan cards to highlight **Plan Name** (e.g., PRO, STARTER) in a bold violet anchor box as the primary identifier.
+  - Improved visual hierarchy for pricing, discounts, and duration.
 - **Consumer Details**: Removed "Edit", "View Documents", and "Add New Site".
 - **Site Details**: Removed "Assign Contractor" form (made read-only) and redundant "View Consumer" button.
 
 ### 5. Marketplace Rating Summary — Anonymous Reviews
+
 **Problem:** Consumers wanted to see their received reviews without violating the anonymity of the raters.
 **Fix:**
+
 - Added `anonymousReviews: string[]` to the `RatingSummary` GraphQL type.
 - Updated `RatingsService.getRatingSummary` to aggregate the raw comment strings into an array using PostgreSQL `ARRAY_AGG`, strictly excluding any rater metadata.
 

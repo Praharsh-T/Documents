@@ -33,10 +33,13 @@
 - **Admin Productivity**: Executed a UI cleanup across the Consumers and Sites modules, stripping away non-functional export buttons and redundant action menus to minimize cognitive load.
 - **Privacy-First Ratings**: Enhanced the `RatingSummary` query to dynamically aggregate and surface raw review comments while strictly sanitizing the data to remove all rater identifiers.
 
-### Capability 0.4 — Marketplace Transparency & Subscription UX
+### Capability 0.5 — Cashfree Payment Lifecycle & Discovery Optimization
 
-- **Admin Go-Live Checklist**: Enhanced with granular readiness gates (SLA/Pricing) for marketplace activation.
-- **Subscription Plan Management**: Redesigned to highlight plan names as the primary identifier, improving clarity and usability.
+- **Payment Gateway Integration**: Transitioned from mock data to real-world payment orchestration via `CashfreeService`. Implemented official SDK integration for Order creation, Payment session management, and Refunds.
+- **Asynchronous Settlement**: Instrumented a robust Webhook listener (`CashfreeWebhookController`) with HMAC security to bridge the gap between third-party payment success and internal system state (Subscription upgrades, Job settlements).
+- **Discovery Safeguards**: Enhanced the `contractorMarketplaceProfile` schema and `searchContractors` logic to strictly enforce job quotas. Contractors are now automatically retired from search results once their PREMIUM tier limits are exhausted.
+- **Data Integrity**: Hardened the contractor onboarding flow with proactive conflict validation (duplicate email/phone checks) and automated organizational hierarchy linking for RO-managed contractors.
+- **Tiered Catalog Pricing**: Upgraded the `ServicesService` to fetch and return the complete Rural/Urban/Semi-Urban pricing matrix for the marketplace catalog in a single aliased database hit.
 
 ---
 

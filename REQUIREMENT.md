@@ -1,9 +1,9 @@
-MESCOM Smart Meter Installation System
+ Smart Meter Installation System
 System Architecture & End-to-End Process Flow
 
 1. Purpose of the System
 This system digitizes and controls the complete lifecycle of smart meter installation
-for new connections under MESCOM by integrating consumer onboarding, site
+for new connections under  by integrating consumer onboarding, site
 readiness, inventory control, contractor execution, and billing readiness into a single
 governed platform.
 
@@ -176,6 +176,6 @@ Step 6: Verification (RO)
 
 
 7. Conclusion
-This architecture aligns with MESCOM’s operational reality while remaining scalable
+This architecture aligns with ’s operational reality while remaining scalable
 for RDSS smart metering programs. It minimizes manual intervention, enforces
 accountability, and ensures a smooth transition from connection approval to billing.

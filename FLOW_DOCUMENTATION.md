@@ -1,8 +1,8 @@
-# MESCOM Application Flow Documentation
+#  Application Flow Documentation
 
 ## Overview
 
-This document explains the complete flow of the MESCOM (Mangalore Electricity Supply Company) meter installation management system, covering both frontend and backend implementations.
+This document explains the complete flow of the  (Smart Meter) meter installation management system, covering both frontend and backend implementations.
 
 ---
 

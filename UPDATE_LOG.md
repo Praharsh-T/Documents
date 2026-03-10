@@ -1,4 +1,4 @@
-# MESCOM Smart Meter System - Update Log
+#  Smart Meter System - Update Log
 
 **Last Updated:** 10 March 2026 (Cashfree Integration & Contractor Logic Refinement)
 
@@ -1883,7 +1883,7 @@ Frontend:
 - New tables: `circles`, `divisions`, `subdivisions`
 - ROs and Sites linked to subdivisions
 - Full GraphQL API with nested queries
-- Seeded with MESCOM circles (MYS, BGM, MNG, DVG, SHP)
+- Seeded with  circles (MYS, BGM, MNG, DVG, SHP)
 
 #### 2. Notification Service
 

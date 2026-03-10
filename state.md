@@ -9,7 +9,7 @@
 
 ### Purpose
 
-SmartMeter is a **government-grade smart meter installation management system** for **MESCOM** (Mangalore Electricity Supply Company). It digitizes the complete lifecycle of smart meter installation for new electricity connections — from consumer registration through meter assignment, physical installation, verification, and billing handoff.
+SmartMeter is a **government-grade smart meter installation management system** for **** (Client). It digitizes the complete lifecycle of smart meter installation for new electricity connections — from consumer registration through meter assignment, physical installation, verification, and billing handoff.
 
 ### Architecture
 

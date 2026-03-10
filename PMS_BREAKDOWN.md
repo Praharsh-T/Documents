@@ -1,6 +1,6 @@
 # SmartMeter — Project Management System (PMS) Breakdown
 
-> **Project**: SmartMeter — Government-Grade Smart Meter Installation Management System (MESCOM)
+> **Project**: SmartMeter — Government-Grade Smart Meter Installation Management System ()
 > **Tech Stack**: NestJS 11 · GraphQL (Code-First) · Drizzle ORM · PostgreSQL 17 · Next.js 16 · React 19 · Apollo Client · Tailwind CSS
 > **Generated**: 2026-02-20 · Based on full codebase analysis
 

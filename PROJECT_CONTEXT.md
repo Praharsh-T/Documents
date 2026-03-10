@@ -6,8 +6,8 @@
 
 ## 1. Project Identity
 
-**Name:** MESCOM Smart Meter Installation Management System  
-**Client:** MESCOM (Mangalore Electricity Supply Company) / **KSLECA** branding in production  
+**Name:**  Smart Meter Installation Management System  
+**Client:**  (Mangalore Electricity Supply Company) / **KSLECA** branding in production  
 **Type:** Government-grade, lifecycle-governed, multi-role enterprise platform  
 **Purpose:** Digitise the complete lifecycle of smart meter installation — consumer onboarding → site verification → meter assignment → contractor installation → RO verification → billing handoff
 

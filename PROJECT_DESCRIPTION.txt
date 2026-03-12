@@ -10,7 +10,7 @@ LAST UPDATED: February 2026
 ================================================================================
 
 This is a GOVERNMENT-GRADE SMART METER INSTALLATION MANAGEMENT SYSTEM for  
-(Mangalore Electricity Supply Company). It digitizes and controls the complete 
+(Client). It digitizes and controls the complete 
 lifecycle of smart meter installation for new connections.
 
 PROJECT TYPE:

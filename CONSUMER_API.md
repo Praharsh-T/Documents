@@ -1,4 +1,4 @@
-# MESCOM Smart Meter System - Consumer API Documentation
+# Smart Meter System - Consumer API Documentation
 
 **Version:** 3.3.0  
 **Last Updated:** 20 February 2026  
@@ -53,7 +53,7 @@ This document describes the API available for Consumer applications. Consumers u
 
 ### Consumer
 A **Consumer** is a person or organization that receives electricity. Each consumer:
-- Has a unique `consumerId` (RR Number from MESCOM)
+- Has a unique `consumerId` (RR Number from Client)
 - Is linked to a **User** account for OTP login
 - Can have multiple **Sites** (physical locations)
 - Is created via Excel import by ADMIN

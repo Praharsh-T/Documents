@@ -1,10 +1,88 @@
 #  Smart Meter System - Update Log
 
-**Last Updated:** 10 March 2026 (Cashfree Integration & Contractor Logic Refinement)
+**Last Updated:** 11 March 2026 (Bank Verification Fix & Payment Flow Hardening)
 
 ---
 
-## 📋 Latest Session Context (10 March 2026 — Cashfree Integration & Contractor Logic Refinement)
+## 📋 Latest Session Context (11 March 2026 — Bank Verification Fix & Payment Flow Hardening)
+
+### What Was Done This Session:
+
+#### **1. BANK ACCOUNT VERIFICATION — FIXED (cashfree.service.ts)**
+
+- **Wrong endpoint URL**: `verifyBankAccount` was hitting `/verification/bankaccount/v2/sync` which does not exist → 404 → generic error message. Corrected to `/verification/bank-account/sync` (hyphen, no `/v2/` segment).
+- **Spurious header removed**: `x-api-version` header was being sent to the Verification Suite API; that API does not use it. Removed.
+- **Improved error messages**: The catch block previously threw a hardcoded `'Invalid bank account details provided'` for every 400, swallowing the real Cashfree error. Now extracts `error.response.data.message` (or `.error_msg` / `.sub_message`) and surfaces the actual reason to the mobile app.
+- **Better logging**: Server logs now include the HTTP status code and the full Cashfree response body, making future debugging instant.
+
+**Common 400 reasons from Cashfree (now surfaced directly):**
+
+| Cashfree message | Cause |
+|---|---|
+| `bank_account length must be between 9 and 18 characters` | Account number wrong length |
+| `Invalid IFSC` | Wrong/non-existent IFSC |
+| `phone number must be 10 digits` | Phone sent with `+91` prefix |
+| `name is required` | Empty name field |
+
+> **Note on IP whitelisting**: Cashfree Verification Suite requires the server's IP to be whitelisted in the dashboard. If not done, the API returns `403 ip_validation_failed`. This is a one-time dashboard config step, not a code change.
+
+---
+
+#### **2. simulatePaymentSuccess — SECURITY FIX (jobs.resolver.ts + jobs.service.ts)**
+
+**Bug:** The mutation had only `@UseGuards(GqlAuthGuard)` with no role guard. The service logic used `!consumerRecord.length` to detect "super admin" — meaning any user without a `consumers` row (every contractor, every admin) could simulate payment on **any job**.
+
+**Fix applied in two layers:**
+
+- **Resolver** — Added `@Roles(UserRole.CONSUMER)` so non-consumers are rejected at the GraphQL layer before reaching the service.
+- **Service** — Removed the wrong `isSuperAdmin` path entirely. Now only the consumer who created the specific job can call this:
+
+```typescript
+// Before (broken)
+const isSuperAdmin = !consumerRecord.length; // contractors = "admin"?!
+const isOwner = consumerRecord.length > 0 && consumerRecord[0].id === job[0].consumerId;
+if (!isSuperAdmin && !isOwner) throw ForbiddenException
+
+// After (correct)
+if (!consumerRecord.length || consumerRecord[0].id !== job[0].consumerId) {
+  throw new ForbiddenException('Only the consumer who created this job can simulate payment');
+}
+```
+
+---
+
+#### **3. PAYMENT FLOW CLARIFICATION (no code change)**
+
+Confirmed and documented that:
+
+- **Cashfree sandbox webhooks DO fire to deployed servers** — `simulatePaymentSuccess` is only needed for true `localhost` dev (no public URL). On any deployed environment (dev, staging, prod), the real Cashfree webhook fires and `mp_jobs.status → REQUESTED` automatically.
+- **Contractor subscription** uses a different confirmation mechanism — contractor manually calls `confirmSubscriptionPayment` after `onVerify`, which polls `cashfreeService.getOrder()` to verify payment status before finalizing.
+- **Two payment types in marketplace:**
+  1. **Consumer → Job Payment**: Fully automatic via webhook. App calls nothing after `onVerify`.
+  2. **Contractor → Subscription**: App calls `confirmSubscriptionPayment(paymentIntentId)` after `onVerify`.
+
+---
+
+**Files Changed:**
+
+- `user-service/src/modules/payments/cashfree.service.ts` — endpoint URL fix, header fix, error surfacing, better logging
+- `user-service/src/modules/marketplace/jobs/jobs.resolver.ts` — added `@Roles(UserRole.CONSUMER)` to `simulatePaymentSuccess`
+- `user-service/src/modules/marketplace/jobs/jobs.service.ts` — removed wrong `isSuperAdmin` logic from `simulatePaymentSuccess`
+
+---
+
+### ⚠️ Pending / Known Gaps After This Session:
+
+| # | Action | Who | Blocking? |
+|---|---|---|---|
+| 1 | Register webhook URL in Cashfree dashboard: `https://<domain>/payments/cashfree/webhook` | DevOps | ✅ Yes — without this, job payments stay `PAYMENT_PENDING` on all envs |
+| 2 | Whitelist server IP in Cashfree Verification Suite dashboard | DevOps | ✅ Yes — `verifyBankAccount` returns 403 until done |
+| 3 | Auto-trigger refund on `rejectJob` / `cancelJob` (currently `// TODO` in jobs.service.ts) | Developer | Production |
+| 4 | Add `@Roles(UserRole.CONSUMER)` to `createMarketplaceRating` resolver | Developer | Low |
+
+---
+
+## 📋 Previous Session Context (10 March 2026 — Cashfree Integration & Contractor Logic Refinement)
 
 ### What Was Done This Session:
 

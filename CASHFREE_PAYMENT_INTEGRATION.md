@@ -134,9 +134,12 @@ Backend processes:
 - Flips `mp_jobs.status → REQUESTED` + sets `paidAt`
 - Job is now live and visible to contractor
 
-**Step 4 (Sandbox only) — Skip payment, simulate:**
+**Step 4 (Localhost dev only) — Skip webhook, simulate:**
+
+> Only needed when running on `localhost` where Cashfree cannot reach your server. On any deployed environment (dev, staging, prod) the real webhook fires automatically — do NOT call this.
+
 ```graphql
-# SUPER_ADMIN only — blocked in production
+# CONSUMER role only, blocked in production
 mutation {
   simulatePaymentSuccess(jobId: "<job-id>") {
     id
@@ -350,7 +353,7 @@ const env = NODE_ENV === 'production' ? CFEnvironment.PRODUCTION : CFEnvironment
 | `initiateSubscriptionUpgrade` | JWT | CONTRACTOR | `{ duration, bankAccount? }` | `{ success, paymentIntent { id, orderId, amount } }` |
 | `confirmSubscriptionPayment` | JWT | CONTRACTOR | `{ paymentIntentId }` | `{ success, newSubscriptionType, validTill }` |
 | `initiateMarketplaceRefund` | JWT | ADMIN/SUPER_ADMIN | `jobId, reason, notes?` | `MarketplaceRefund` |
-| `simulatePaymentSuccess` | JWT | **SUPER_ADMIN only** | `jobId` | `MarketplaceJob` |
+| `simulatePaymentSuccess` | JWT | **CONSUMER only** (owner of job) | `jobId` | `MarketplaceJob` |
 
 ### Queries
 
@@ -384,6 +387,29 @@ const env = NODE_ENV === 'production' ? CFEnvironment.PRODUCTION : CFEnvironment
 | 7 | `simulatePaymentSuccess` production-accessible | No role guard, no env check | Locked to `SUPER_ADMIN` role + runtime `NODE_ENV === 'production'` block |
 | 8 | `simulatePaymentSuccess` left `mp_payments` stale | Only updated `mp_jobs`, never touched `mp_payments` | Now updates `mp_payments.status → SUCCESS` and `completedAt` atomically |
 | 9 | `qrProfileToken` null on auto-created profiles | Both auto-create paths (Excel import + subscription upgrade) omitted the field | `uuidv4()` token generated in all 3 creation paths |
+
+---
+
+## 12b. Bugs Fixed (11 March 2026)
+
+| # | Bug | Root Cause | Fix |
+|---|---|---|---|
+| 1 | `verifyBankAccount` always throws "Bank account verification failed" | URL was `/verification/bankaccount/v2/sync` (does not exist → 404). Also `x-api-version` header sent to Verification Suite which doesn't use it. | Changed URL to `/verification/bank-account/sync`, removed `x-api-version` header |
+| 2 | `verifyBankAccount` 400 errors show generic message | Catch block threw hardcoded string, swallowing Cashfree's real error | Now extracts `error.response.data.message` / `.error_msg` / `.sub_message` and surfaces it directly |
+| 3 | `simulatePaymentSuccess` callable by contractors and admins | No `CONSUMER` role guard on resolver; service used `!consumerRecord.length` (= no consumers row) as a proxy for "admin", which matched every contractor | Added `@Roles(UserRole.CONSUMER)` to resolver; rewrote service ownership check to only allow the consumer who created the job |
+
+### Cashfree Verification Suite — Key Differences
+
+The Verification Suite is a **separate Cashfree product** from the Payment Gateway:
+
+| | Payment Gateway | Verification Suite |
+|---|---|---|
+| Credentials env vars | `CASHFREE_APP_ID` + `CASHFREE_SECRET` | `CASHFREE_VERIFICATION_CLIENT_ID` + `CASHFREE_VERIFICATION_CLIENT_SECRET` |
+| Base URL | `https://api.cashfree.com` | `https://api.cashfree.com` (same, different path) |
+| Auth headers | `x-client-id` + `x-client-secret` | `x-client-id` + `x-client-secret` |
+| API version header | `x-api-version: 2023-08-01` | **Not used** |
+| Endpoint | `/pg/orders`, `/pg/orders/{id}/refunds` | `/verification/bank-account/sync` |
+| IP whitelisting | Not required | **Required** — must whitelist server IP in Cashfree dashboard |
 
 ---
 
@@ -435,7 +461,7 @@ imports: [DatabaseModule, forwardRef(() => PaymentsModule)]
 | HMAC webhook signature verification | ✅ Done |
 | Async refund status via webhook | ✅ Done |
 | `gatewayPaymentId` stored per payment | ✅ Done |
-| `simulatePaymentSuccess` locked to SUPER_ADMIN | ✅ Done |
+| `simulatePaymentSuccess` locked to CONSUMER (job owner) + blocked in production | ✅ Done |
 | FK fix: contractor `userId` used in payments | ✅ Done |
 | `qrProfileToken` set on all auto-create paths | ✅ Done |
 | Cashfree sandbox → production env switch | Auto (via `NODE_ENV=production`) |

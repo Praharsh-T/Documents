@@ -1,0 +1,123 @@
+﻿PRIVACY POLICY
+Energy Meter & Electrical Services Application
+Effective Date: 19/02/2026
+Last Updated: 19/02/2026
+1. Introduction
+This Privacy Policy explains how [Organization Name] (“Company”, “We”, “Us”) collects, uses, stores, processes, and protects personal data through the Energy Meter & Electrical Services Application (“Platform”).
+We act as a Data Fiduciary under the Digital Personal Data Protection Act, 2023 (DPDPA).
+By using this Platform, you consent to the collection and processing of your personal data in accordance with this Policy.
+2. Categories of Data Collected
+We collect personal data necessary for lawful service delivery.
+2.1 Consumer Data
+* Full Name
+* Mobile Number
+* Email ID (if provided)
+* Address & Service Location (State/District/Taluk)
+* LGD-based location classification (Urban / Semi-Urban / Rural)
+* OTP verification logs
+* Service history
+* Payment transaction details
+* Ratings & feedback
+2.2 Contractor Data
+* Full Name
+* Mobile Number
+* Email ID
+* License / Certification details
+* Assigned serviceable areas
+* Bank account details (for settlement)
+* GST details (if applicable)
+* SLA performance records
+* Ratings & feedback
+2.3 Technical & System Data
+* Device identifiers
+* IP address
+* Login timestamps
+* App usage logs
+* SLA timers
+* In-app call masking metadata (not call content)
+3. Purpose of Data Processing
+Personal data is processed strictly for lawful purposes including:
+* User authentication (OTP-based login)
+* Service request management
+* Location-based pricing determination
+* Contractor allocation
+* SLA tracking and compliance
+* Payment processing and settlement
+* Dispute resolution
+* Ratings and quality control
+* Regulatory compliance
+* Fraud prevention
+* Customer support
+We do not process personal data for unrelated or secondary purposes without additional consent.
+4. Legal Basis & Consent
+Processing is based on:
+* Explicit consent at registration
+* Performance of contract (service delivery)
+* Legal obligations
+Users may withdraw consent at any time by contacting the Grievance Officer. Withdrawal may affect the ability to continue using certain services.
+5. Data Sharing & Disclosure
+We may share data only with:
+* Payment gateway providers (for processing payments)
+* Banking institutions (for contractor settlements)
+* SMS/OTP service providers
+* Cloud hosting providers
+* Government authorities when legally required
+We do not sell or rent personal data.
+All third-party processors are bound by contractual data protection obligations.
+6. Data Retention Policy
+Data Type
+	Retention Period
+	Account Data
+	Until account deletion + statutory retention
+	Transaction Records
+	As per financial laws (minimum 8 years recommended)
+	SLA Logs
+	3–5 years
+	OTP Logs
+	6–12 months
+	Contractor Bank Details
+	Until contractor deactivation + statutory period
+	Data is deleted or anonymized once no longer required.
+7. Data Principal Rights (Under DPDPA)
+You have the right to:
+* Access your personal data
+* Correct inaccurate data
+* Request erasure of personal data
+* Withdraw consent
+* Nominate a representative
+Requests can be submitted to the Grievance Officer (details below).
+8. Security Safeguards
+We implement reasonable security measures including:
+* Encrypted data transmission (HTTPS)
+* Role-based access control
+* Secure storage of bank details
+* Masked communication between contractor and consumer
+* OTP-based job start and completion verification
+* Audit logs for administrative actions
+In the event of a data breach, we will notify affected individuals and relevant authorities as required under law.
+9. Cross-Border Data Transfers
+Personal data may be processed on cloud infrastructure located outside India, subject to compliance with DPDPA and applicable government notifications.
+10. Children’s Data
+The Platform is not intended for individuals under 18 years of age. We do not knowingly collect children’s personal data.
+11. Automated Decision-Making
+Certain processes are automated, including:
+* SLA breach detection
+* Contractor allocation
+* Location-based pricing determination
+These decisions are system-driven and subject to administrative review.
+12. Grievance Redressal Mechanism
+In compliance with DPDPA, we have appointed a Grievance Officer.
+Grievance Officer Details:
+Name: [Insert Name]
+Email: [Insert Email]
+Address: [Insert Address]
+Response Timeline: Within prescribed statutory period.
+13. Data Deletion & Account Closure
+Users may request account deletion.
+Deletion may be subject to:
+* Ongoing disputes
+* Legal obligations
+* Financial audit requirements
+Upon approval, data will be anonymized or deleted in accordance with retention rules.
+14. Updates to this Policy
+We may update this Privacy Policy from time to time. Updated versions will be published on the Platform with a revised effective date.

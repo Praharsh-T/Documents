@@ -1,10 +1,40 @@
 #  Smart Meter System - Update Log
 
-**Last Updated:** 11 March 2026 (Bank Verification Fix & Payment Flow Hardening)
+**Last Updated:** 25 March 2026 (Subcontractor Refinements & Pending Webhook Automation)
 
 ---
 
-## 📋 Latest Session Context (11 March 2026 — Bank Verification Fix & Payment Flow Hardening)
+## 📋 Latest Session Context (25 March 2026 — Subcontractor Refinements & Pending Webhook Automation)
+
+### What Was Done This Session:
+
+#### **1. SUBCONTRACTOR MANAGEMENT — ENHANCED**
+
+- **Individual Profile Access**: Added `getSubcontractor(subcontractorId: ID!)` query to allow contractors to view full details of a specific crew member.
+- **Availability Toggle Exposed**: Added `isAvailableForJobs` field to the `ContractorMarketplaceProfile` type for real-time visibility in the Mobile App.
+- **Active State Tracking**: Injected `isActive` boolean into the subcontractor mapping response.
+- **Quota Enforcement Verified**: Confirmed that `createSubContractor` strictly enforces the plan-based `maxSubcontractors` limit.
+
+#### **2. MARKETPLACE PROFILE — UNLOCKED FOR FREE TIER**
+
+- **Coverage Area Management**: Removed the legacy `PREMIUM` restriction from `updateMyContractorCoverageAreas`.
+- **Reasoning**: To support the new commission-based model, FREE tier contractors must be able to set their own districts/villages so consumers can find them.
+
+#### **3. WEBHOOK AUTOMATION — PENDING (`PENDING`)**
+
+- **Dynamic notify_url**: Researched and prepared the integration to dynamically pass `notify_url` to Cashfree.
+- **Current State**: Code is **PENDING** further environment setup.
+- **Dependency**: Requires `BACKEND_URL` to be defined in `.env`.
+- **Action Item**: Until automated, manual webhook registration is required in the Cashfree Dashboard (`/payments/cashfree/webhook`).
+
+**Files Referenced:**
+- `user-service/src/modules/marketplace/contractors/contractor-profile.resolver.ts`
+- `user-service/src/modules/marketplace/contractors/contractor-profile.service.ts`
+- `user-service/src/modules/payments/payments.service.ts`
+
+---
+
+## 📋 Previous Session Context (23 March 2026 — Marketplace Flow Revamp Batch 1)
 
 ### What Was Done This Session:
 

@@ -1,14 +1,22 @@
 # Smart Meter System - Consumer API Documentation
 
-**Version:** 3.3.0  
-**Last Updated:** 20 February 2026  
-**GraphQL Endpoint:** `http://localhost:3001/graphql`
+**Version:** 3.4.0  
+**Last Updated:** 23 March 2026  
+**GraphQL Endpoint:** `https://connectshakti-dev.klonec.cloud/graphql`
 
 ---
 
 ## Overview
 
 This document describes the API available for Consumer applications. Consumers use **Phone + OTP** based authentication and can view their sites, track installation status, upload site photos, and book electrical services via the Marketplace.
+
+### Key Changes (v3.4.0 — 23 March 2026)
+- **Post-Acceptance Payment Flow:** Consumer pays AFTER the contractor accepts the job, not before. `createMarketplaceJob` starts in `REQUESTED` status. `acceptJob` by contractor triggers a payment link to the consumer → job moves to `PAYMENT_PENDING` → consumer pays → `PAID` → work begins.
+- **Availability Filter:** Only contractors who have enabled "Available for Jobs" appear in search results.
+- **Blacklist Filter:** Blacklisted contractors are excluded from search results completely.
+- **GPS Village Detection:** New `nearestVillage(lat, lng)` query — returns the closest classified village within 50 km. Use this to auto-fill the village selection on the consumer booking screen.
+- **Commission Model:** FREE (non-subscribed) contractors are charged a commission %; PREMIUM contractors pay zero commission. Commission is snapshotted at job creation.
+- **New Job Statuses:** `PAID` status added (consumer has paid, awaiting work); `CANCELLED_BY_CONSUMER` replaces `CANCELLED`.
 
 ### Key Changes (v3.3.0)
 - **Marketplace Added:** Consumers can now browse services, search contractors, and book jobs via the Marketplace module
@@ -695,20 +703,27 @@ Consumers are created by ADMIN users via Excel import.
 
 Consumers can browse electrical services and book licensed contractors through the marketplace.
 
-### Marketplace Flow
+### Marketplace Flow (Updated v3.4.0 — Post-Acceptance Payment)
 
 ```
 1. Browse service categories (public)
-2. Choose service → Search contractors in your village
-3. Select contractor → createMarketplaceJob (payment-first)
-   → Returns paymentUrl + jobId
-4. Pay via payment link
-5. Job status: PAYMENT_PENDING → REQUESTED
-6. Contractor accepts (ACCEPTED) or rejects (REJECTED → auto-refund)
-7. If accepted: Contractor generates Start OTP → you verify → STARTED
+2. GPS detect your village → nearestVillage(lat, lng) OR manually select
+3. Choose service → Search contractors in your village
+4. Select contractor → createMarketplaceJob
+   → Job status: REQUESTED (no payment yet)
+   → Contractor is notified
+5. Contractor accepts → You receive a Pay Now notification
+   → Job status: PAYMENT_PENDING
+   → You have 24 hours to pay
+6. Consumer pays via the payment link
+   → Job status: PAID
+7. Contractor starts work (via Start OTP) → STARTED
 8. Contractor generates Completion OTP → you verify → COMPLETED
-9. Rate the contractor (1-5 stars)
+9. Rate the contractor (1–5 stars)
 10. Job CLOSED
+
+⚠️  If contractor REJECTS the job → REJECTED (no payment was taken)
+⚠️  If consumer doesn't pay within 24h → job is auto-cancelled
 ```
 
 ---
@@ -877,9 +892,35 @@ query GetMarketplaceContractorReviews($contractorId: ID!, $page: Int, $limit: In
 
 ---
 
-### M6. Book a Job (Payment-First)
+### M0. Detect Nearest Village via GPS
 
-Creates a job and returns a payment link. **Consumer must pay before contractor sees the job.**
+Takes the user's GPS coordinates and returns the nearest classified village within 50 km. Use this to auto-fill the village/location field when the consumer taps "Use Current Location".
+
+```graphql
+query NearestVillage($lat: Float!, $lng: Float!, $radiusKm: Float) {
+  nearestVillage(lat: $lat, lng: $lng, radiusKm: $radiusKm) {
+    id
+    villageName
+    distanceKm
+  }
+}
+```
+
+**Variables:**
+```json
+{ "lat": 13.3409, "lng": 74.7421, "radiusKm": 50 }
+```
+
+**Notes:**
+- Returns `null` if no classified village is found within `radiusKm` (default 50 km).
+- The returned `id` should be passed as `locationId` in `createMarketplaceJob`.
+- This query is **public** — no auth header required.
+
+---
+
+### M6. Book a Job (Post-Acceptance Payment)
+
+Creates a job in `REQUESTED` status. **No payment is taken at this point.** Consumer pays only after the contractor accepts.
 
 ```graphql
 mutation CreateMarketplaceJob($input: CreateJobInput!) {
@@ -887,8 +928,8 @@ mutation CreateMarketplaceJob($input: CreateJobInput!) {
     jobId
     jobNumber
     amount
-    paymentUrl
-    paymentSessionId
+    paymentSessionId   # null at creation — session is created when contractor accepts
+    paymentUrl         # null at creation
   }
 }
 ```
@@ -911,12 +952,31 @@ mutation CreateMarketplaceJob($input: CreateJobInput!) {
 | Field | Description |
 |-------|-------------|
 | `jobId` | UUID of created job |
-| `jobNumber` | Human-readable number (e.g., `JOB-20260220-0001`) |
-| `amount` | Amount to pay (in ₹) |
-| `paymentUrl` | Redirect consumer here to pay (Cashfree - placeholder in dev) |
-| `paymentSessionId` | Cashfree session ID |
+| `jobNumber` | Human-readable number (e.g., `JOB-20260323-0001`) |
+| `amount` | Service price in ₹ (snapshotted at creation) |
+| `paymentSessionId` | `null` at creation — set when contractor accepts |
+| `paymentUrl` | `null` at creation — sent via notification when contractor accepts |
 
-> **After Payment:** Job status moves from `PAYMENT_PENDING` → `REQUESTED`. Contractor is notified.
+> **After Contractor Accepts:** Consumer receives SMS/push notification with a Pay Now link. Job status becomes `PAYMENT_PENDING`. Consumer has **24 hours** to pay before the job is auto-cancelled.
+
+---
+
+### M6b. Initiate / Retry Payment
+
+If the consumer needs to re-initiate the payment (e.g., payment link expired), they can call:
+
+```graphql
+mutation InitiateMarketplacePayment($jobId: ID!) {
+  initiateMarketplacePayment(jobId: $jobId) {
+    paymentId
+    sessionId
+    paymentLink
+    amount
+  }
+}
+```
+
+> **Requires:** Job must be in `PAYMENT_PENDING` status and consumer must be the job owner.
 
 ---
 
@@ -971,17 +1031,18 @@ query GetMyMarketplaceJobs($filters: JobsFilterInput) {
 }
 ```
 
-**Job Status Lifecycle:**
+**Job Status Lifecycle (v3.4.0):**
 | Status | Description |
 |--------|-------------|
-| `PAYMENT_PENDING` | Created, waiting for consumer payment |
-| `REQUESTED` | Paid, waiting for contractor acceptance |
-| `ACCEPTED` | Contractor accepted |
-| `REJECTED` | Contractor rejected → refund initiated |
+| `REQUESTED` | Created, waiting for contractor to accept or reject |
+| `PAYMENT_PENDING` | Contractor accepted, consumer must pay within 24h |
+| `PAID` | Consumer paid, work can begin |
+| `ACCEPTED` | Intermediate state during acceptance processing |
+| `REJECTED` | Contractor rejected (no money taken) |
 | `STARTED` | Work in progress |
 | `COMPLETED` | Work done, awaiting closure |
 | `CLOSED` | Fully completed |
-| `CANCELLED` | Cancelled by consumer |
+| `CANCELLED_BY_CONSUMER` | Cancelled by consumer before work started |
 | `REFUNDED` | Refund processed |
 | `SLA_BREACH` | SLA violation detected |
 
@@ -1057,7 +1118,8 @@ mutation CreateMarketplaceRating($input: CreateRatingInput!) {
 | `installationStatusByConsumer(consumerId)` | Get installation summary |
 | `marketplaceServicesWithPrices(areaType)` | Browse services with prices |
 | `marketplaceServicesByCategory(areaType)` | Services grouped by category |
-| `searchMarketplaceContractors(input)` | Search contractors by service + location |
+| `nearestVillage(lat, lng, radiusKm?)` | **NEW v3.4** GPS — find closest village within radius |
+| `searchMarketplaceContractors(input)` | Search available, non-blacklisted contractors |
 | `marketplaceContractorProfile(contractorId)` | View contractor profile |
 | `marketplaceContractorReviews(contractorId)` | View contractor reviews |
 | `myMarketplaceJobs(filters)` | View my booked jobs |
@@ -1072,6 +1134,7 @@ mutation CreateMarketplaceRating($input: CreateRatingInput!) {
 | `uploadSitePhotoBase64(id, input)` | Upload photo with base64 |
 | `uploadSitePhoto(id, input)` | Upload photo with pre-uploaded URL |
 | `updateSiteLocation(id, input)` | Update GPS coordinates |
-| `createMarketplaceJob(input)` | Book a service (payment-first) |
+| `createMarketplaceJob(input)` | **Updated v3.4** Book a job (REQUESTED, no payment yet) |
+| `initiateMarketplacePayment(jobId)` | **NEW v3.4** Initiate/retry payment after contractor accepts |
 | `cancelMarketplaceJob(input)` | Cancel a pending job |
 | `createMarketplaceRating(input)` | Rate contractor after job |

@@ -1,0 +1,135 @@
+﻿TERMS & CONDITIONS
+Energy Meter & Electrical Services Application
+
+
+Effective Date: 19/2/2026
+
+
+1. Introduction
+These Terms & Conditions (“Terms”) govern access and use of the Energy Meter & Electrical Services Application (“Platform”) operated by [Organization Name] (“Company”, “We”, “Us”).
+By registering or using the Platform, you agree to comply with these Terms.
+2. Definitions
+* Consumer/User – Individual requesting electrical services.
+* Contractor – Licensed electrical contractor registered and approved on the portal.
+* Service – Electrical works listed in the service catalogue.
+* SLA – Service Level Agreement timelines configured by Admin.
+* Premium Subscription – Paid access to additional service categories.
+* DPDPA – Digital Personal Data Protection Act, 2023.
+PART A – TERMS FOR CONSUMERS
+3. User Registration
+* Users must provide accurate details during registration.
+* OTP-based authentication may be required.
+* Users are responsible for safeguarding their login credentials.
+4. Service Requests
+* Services are provided by independent contractors.
+* Pricing is determined based on:
+   * Service type
+   * Location classification (Urban / Semi-Urban / Rural)
+* Final cost = Base Service Price + Add-ons + Applicable Taxes.
+5. Payments
+* Payments must be made through the integrated payment gateway.
+* Cash transactions outside the platform are discouraged and not covered by dispute resolution.
+* Platform may deduct service fees before transferring balance to contractor.
+6. Cancellation Policy (Consumers)
+6.1 Before Contractor Acceptance
+* Full refund.
+6.2 After Acceptance but Before Job Start
+* Cancellation fee may apply (e.g., visit charge).
+6.3 After Job Start (OTP Verified)
+* No cancellation allowed unless mutually agreed.
+* Refund subject to dispute review.
+7. Refund Policy (Consumers)
+Refunds may be processed under the following conditions:
+* Service not delivered.
+* Contractor fails to attend within SLA.
+* Duplicate payment.
+Refund timelines:
+* Processed within 7–10 working days.
+* Refunded to original payment method.
+Refunds will not apply for:
+* Completed and OTP-confirmed jobs.
+* Dissatisfaction without technical defect evidence.
+8. Ratings & Conduct
+* Consumers may rate contractors.
+* False complaints or abusive conduct may result in suspension.
+PART B – TERMS FOR CONTRACTORS
+9. Contractor Registration
+* Contractors are onboarded by Admin only.
+* Valid license and certifications must be provided.
+* Bank details must be accurate.
+10. Subscription & Fees
+* Premium services require registration and renewal fees.
+* Non-premium contractors may only access specified services (e.g., energy meter installation).
+11. SLA Compliance
+Contractors must:
+* Accept/reject requests within SLA.
+* Start and complete jobs within SLA.
+* Use OTP verification for job start and completion.
+Repeated SLA breaches may lead to:
+* Warning
+* Temporary suspension
+* Permanent deactivation
+12. Payment to Contractors
+* Payment settlement after job completion and confirmation.
+* Platform may deduct:
+   * Service fees
+   * Subscription charges
+   * Applicable taxes
+Settlement timelines: [e.g., T+3 working days].
+13. Cancellation by Contractor
+* Contractors must not cancel accepted jobs without valid reason.
+* Excessive cancellations may lead to penalties.
+14. Independent Contractor Status
+Contractors are independent service providers.
+The Platform does not employ contractors nor guarantee specific income.
+PART C – DATA PROTECTION & PRIVACY (DPDPA Compliance)
+This Platform complies with the Digital Personal Data Protection Act, 2023.
+15. Data Collection
+We collect:
+* Name
+* Contact details
+* Location information
+* Bank details (contractors)
+* Transaction data
+Data is collected only for lawful purposes, including:
+* Service delivery
+* Payments
+* Regulatory compliance
+16. Consent
+* Users provide explicit consent during registration.
+* Consent may be withdrawn at any time, subject to legal and contractual obligations.
+17. Data Principal Rights (Under DPDPA)
+Users have the right to:
+* Access personal data
+* Correct inaccurate data
+* Erase data (subject to legal retention requirements)
+* Nominate a representative
+Requests may be submitted to: [Data Protection Officer email].
+18. Data Security
+* Reasonable security safeguards are implemented.
+* Data is stored securely.
+* Unauthorized access or breaches will be handled per legal requirements.
+19. Data Retention
+Data is retained only as long as necessary for:
+* Service completion
+* Legal compliance
+* Dispute resolution
+PART D – GENERAL TERMS
+20. Limitation of Liability
+The Platform acts as an intermediary between consumer and contractor.
+We are not liable for:
+* On-site accidents
+* Property damage caused by contractor negligence
+* Indirect or consequential losses
+21. Dispute Resolution
+* Disputes must first be raised through in-app grievance system.
+* Jurisdiction: Courts of [State, India].
+* Governing Law: Laws of India.
+22. Modification of Terms
+Company reserves the right to modify these Terms.
+Continued use constitutes acceptance of updated Terms.
+23. Contact Information
+Grievance Officer / Data Protection Officer:
+Name: [Insert]
+Email: [Insert]
+Address: [Insert]

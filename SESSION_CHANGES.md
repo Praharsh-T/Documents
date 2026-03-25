@@ -1,8 +1,31 @@
 # Session Changes Log
 
-**Last Updated:** 10 March 2026
+**Last Updated:** 25 March 2026
 
 This document tracks all changes made during development sessions. Update this file as changes are made.
+
+---
+
+## Session: 25 March 2026 — Subcontractor Refinements & Pending Webhook Automation
+
+### 1. Subcontractor Management Enhancements
+
+- **Individual Profile Access**: Added `getSubcontractor(subcontractorId: ID!)` query to allow contractors to view full details of a specific crew member.
+- **Availability Toggle Exposed**: Added `isAvailableForJobs` field to the `ContractorMarketplaceProfile` type for real-time visibility in the Mobile App.
+- **Active State Tracking**: Injected `isActive` boolean into the subcontractor mapping response.
+- **Quota Enforcement Verified**: Confirmed that `createSubContractor` strictly enforces the plan-based `maxSubcontractors` limit.
+
+### 2. Marketplace Profile — Unlocked for FREE Tier
+
+- **Coverage Area Management**: Removed the legacy `PREMIUM` restriction from `updateMyContractorCoverageAreas`.
+- **Reasoning**: To support the new commission-based model, FREE tier contractors must be able to set their own districts/villages so consumers can find them.
+
+### 3. Webhook Automation — PENDING (`PENDING`)
+
+- **Dynamic notify_url**: Researched and prepared the integration to dynamically pass `notify_url` to Cashfree.
+- **Current State**: Code is **PENDING** further environment setup.
+- **Dependency**: Requires `BACKEND_URL` to be defined in `.env`.
+- **Action Item**: Until automated, manual webhook registration is required in the Cashfree Dashboard (`/payments/cashfree/webhook`).
 
 ---
 

@@ -1688,4 +1688,371 @@ input JobsFilterInput {
 
 ---
 
-_Last Updated: 26 February 2026_
+_Last Updated: 27 March 2026_
+
+---
+
+## Payouts APIs (Admin Only)
+
+> All payout operations require `ADMIN` or `SUPER_ADMIN` role.
+>
+> **Lifecycle:** `DRAFT` → `PENDING_APPROVAL` → `APPROVED` → `PROCESSING` → `COMPLETED` / `FAILED`
+> Cancel is available before `PROCESSING` starts.
+
+### Payout Queries
+
+#### `payoutPreview`
+
+Preview eligible jobs and computed amounts without creating a batch.
+
+```graphql
+query PayoutPreview($cutoffAt: DateTime) {
+  payoutPreview(cutoffAt: $cutoffAt) {
+    cutoffAt
+    eligibleJobCount
+    totalNetAmount
+    byContractor {
+      contractorId
+      contractorName
+      jobCount
+      grossAmount
+      commissionAmount
+      gstOnCommission
+      tdsAmount
+      netAmount
+      hasBankDetails
+      bankVerified
+    }
+  }
+}
+```
+
+**Notes:** Omit `cutoffAt` to use `NOW() − 2 hours` (same as immediate batch rule).
+
+---
+
+#### `payoutBatches`
+
+Paginated list of all payout batches.
+
+```graphql
+query PayoutBatches($filters: PayoutBatchFilterInput) {
+  payoutBatches(filters: $filters) {
+    items {
+      id
+      referenceId
+      scheduleType
+      status
+      cutoffAt
+      totalJobs
+      totalContractors
+      totalGrossAmount
+      totalCommissionAmount
+      totalGstOnCommission
+      totalTdsAmount
+      totalNetAmount
+      createdBy
+      approvedBy
+      approvedAt
+      notes
+      processingStartedAt
+      completedAt
+      createdAt
+      updatedAt
+    }
+    total
+    page
+    limit
+  }
+}
+```
+
+**Filter input:** `{ status: PayoutBatchStatus, page: Int, limit: Int }`
+
+---
+
+#### `payoutBatch`
+
+Get a single batch with its contractor items.
+
+```graphql
+query PayoutBatch($batchId: ID!) {
+  payoutBatch(batchId: $batchId) {
+    id
+    referenceId
+    status
+    totalNetAmount
+    items {
+      id
+      contractorId
+      bankAccountHolderName
+      bankAccountNumber
+      bankIfscCode
+      jobCount
+      netAmount
+      status
+      gatewayTransferId
+      gatewayUtr
+      failureReason
+    }
+  }
+}
+```
+
+---
+
+#### `payoutBatchItemLedger`
+
+Per-job financial breakdown for a single contractor item in a batch.
+
+```graphql
+query PayoutBatchItemLedger($batchItemId: ID!) {
+  payoutBatchItemLedger(batchItemId: $batchItemId) {
+    id
+    jobId
+    jobNumber
+    grossAmount
+    commissionAmount
+    gstOnCommission
+    contractorEarnings
+    tdsAmount
+    netAmount
+  }
+}
+```
+
+---
+
+#### `payoutAuditLogs`
+
+Full audit trail for a batch (all status changes and actor details).
+
+```graphql
+query PayoutAuditLogs($batchId: ID!) {
+  payoutAuditLogs(batchId: $batchId) {
+    id
+    action
+    actorId
+    actorRole
+    details
+    createdAt
+  }
+}
+```
+
+---
+
+#### `payoutScheduleConfig`
+
+Get the current weekly auto-batch schedule settings.
+
+```graphql
+query PayoutScheduleConfig {
+  payoutScheduleConfig {
+    dayOfWeek
+    executionHour
+    executionMinute
+    cutoffOffsetHours
+    isEnabled
+    updatedAt
+  }
+}
+```
+
+---
+
+### Payout Mutations
+
+#### `generateImmediatePayout`
+
+Create a DRAFT payout batch with cutoff = `NOW() − 2 hours`.
+
+```graphql
+mutation GenerateImmediatePayout($input: GenerateImmediatePayoutInput) {
+  generateImmediatePayout(input: $input) {
+    id
+    referenceId
+    status
+    totalJobs
+    totalNetAmount
+  }
+}
+```
+
+**Input:** `{ notes: String }` (both optional)
+
+---
+
+#### `submitPayoutBatch`
+
+Advance a `DRAFT` batch to `PENDING_APPROVAL`.
+
+```graphql
+mutation SubmitPayoutBatch($batchId: ID!) {
+  submitPayoutBatch(batchId: $batchId) {
+    id
+    status
+  }
+}
+```
+
+---
+
+#### `approvePayoutBatch`
+
+Advance `PENDING_APPROVAL` → `APPROVED`. Locks all included jobs (`payoutStatus = LOCKED`).
+
+```graphql
+mutation ApprovePayoutBatch($input: ApprovePayoutBatchInput!) {
+  approvePayoutBatch(input: $input) {
+    id
+    status
+    approvedBy
+    approvedAt
+  }
+}
+```
+
+**Input:** `{ batchId: ID!, notes: String }`
+
+---
+
+#### `cancelPayoutBatch`
+
+Cancel a batch at any pre-processing stage. Unlocks any locked jobs.
+
+```graphql
+mutation CancelPayoutBatch($input: CancelPayoutBatchInput!) {
+  cancelPayoutBatch(input: $input) {
+    id
+    status
+  }
+}
+```
+
+**Input:** `{ batchId: ID!, reason: String }`
+
+---
+
+#### `processPayoutBatch`
+
+Trigger Cashfree Payouts bank transfers for an `APPROVED` batch. **Irreversible.**
+
+```graphql
+mutation ProcessPayoutBatch($batchId: ID!) {
+  processPayoutBatch(batchId: $batchId) {
+    id
+    status
+    processingStartedAt
+  }
+}
+```
+
+**Behaviour:**
+- Each contractor item is processed independently — one failure does not abort others.
+- Items without verified bank details are marked `SKIPPED`.
+- When all items resolve: all SUCCESS → batch `COMPLETED`; any FAILED → batch `FAILED`.
+- Credentials used: `CASHFREE_PAYOUT_CLIENT_ID` / `CASHFREE_PAYOUT_CLIENT_SECRET` (falls back to `CASHFREE_VERIFICATION_CLIENT_ID/SECRET` if not set separately).
+
+---
+
+#### `updatePayoutScheduleConfig`
+
+Configure the automatic weekly payout schedule. The cron runs hourly and fires when `dayOfWeek + executionHour` match IST time.
+
+```graphql
+mutation UpdatePayoutScheduleConfig($input: UpdatePayoutScheduleConfigInput!) {
+  updatePayoutScheduleConfig(input: $input) {
+    dayOfWeek
+    executionHour
+    executionMinute
+    cutoffOffsetHours
+    isEnabled
+    updatedAt
+  }
+}
+```
+
+**Input fields:**
+
+| Field | Type | Description |
+|---|---|---|
+| `dayOfWeek` | `Int` | 0 = Sunday, 1 = Monday … 6 = Saturday |
+| `executionHour` | `Int` | IST hour (0–23) |
+| `executionMinute` | `Int` | IST minute (0–59) |
+| `cutoffOffsetHours` | `Int` | Jobs completed at least N hours before schedule time are eligible |
+| `isEnabled` | `Boolean` | Enable / disable auto-batching |
+
+---
+
+### Payout Enums
+
+```graphql
+enum PayoutBatchStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum PayoutItemStatus {
+  PENDING
+  PROCESSING
+  SUCCESS
+  FAILED
+  SKIPPED
+}
+
+enum JobPayoutStatus {
+  UNPAID    # Default — job is eligible for a future batch
+  LOCKED    # Included in an APPROVED batch, awaiting transfer
+  PAID      # Transfer completed
+}
+```
+
+---
+
+### Payout Deduction Formula
+
+Applied per job inside a batch item:
+
+```
+gross              = job.totalPriceSnapshot
+commission         = job.commissionAmount          (snapshotted at booking time)
+gstOnCommission    = commission × 18%
+contractorEarnings = gross − commission − gstOnCommission
+tds                = contractorEarnings × 1%
+net                = contractorEarnings − tds
+```
+
+All amounts are in INR. Stored as `DECIMAL(12,2)` in the DB.
+
+---
+
+### `confirmMarketplacePayment` Mutation (Consumer)
+
+Active payment confirmation — call this immediately after the Cashfree SDK callback fires on the mobile/web client. Fetches live order status from Cashfree and marks the job `PAID` right away without waiting for the webhook.
+
+```graphql
+mutation ConfirmMarketplacePayment($paymentId: ID!) {
+  confirmMarketplacePayment(paymentId: $paymentId) {
+    confirmed
+    jobStatus
+    paidAt
+    message
+  }
+}
+```
+
+**Roles:** `CONSUMER`
+
+**When to call:** Immediately after the Cashfree SDK `onPaymentSuccess` / `onPaymentComplete` callback. Pass the `paymentId` received from `initiateMarketplacePayment`.
+
+**Idempotent:** If the payment is already `SUCCESS` in the DB, returns the existing job status immediately without calling Cashfree.
+
+---
+
+_Last Updated: 27 March 2026_

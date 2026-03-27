@@ -152,3 +152,92 @@ If the logged-in user is technically a "Subcontractor" to someone else:
   2. They do not need to configure "Coverage Areas" (the Parent assigns these during creation or edit).
 3. Jobs will arrive to them normally. They accept/reject jobs normally.
 4. *App UI Impact:* The app should detect if they have a parent mapping and perhaps show a banner: "You are operating as a Subcontractor for [Agency Name]. All payouts are managed centrally."
+
+---
+
+## 4. CONTRACTOR APP — Bank Details & Payout Beneficiary (Update: 2026-03-27)
+
+### Background
+Payouts to contractors are processed via **Cashfree Payouts v2**. For a contractor to receive a payout, they must first be registered as a Cashfree **beneficiary** using their bank account details. This registration happens automatically on the backend whenever bank details are saved — but the result is now surfaced to the app so the contractor knows whether setup succeeded.
+
+### Two Entry Points for Bank Details
+
+#### Entry Point A — During Subscription Upgrade
+`initiateSubscriptionUpgrade` accepts an optional `bankAccount` field. If provided, bank details are saved and beneficiary registration is attempted.
+
+The response now includes a `beneficiaryWarning` field:
+```graphql
+mutation {
+  initiateSubscriptionUpgrade(input: {
+    duration: MONTHLY
+    bankAccount: {
+      accountNumber: "123456789012"
+      ifscCode: "SBIN0001234"
+      accountHolderName: "John Doe"
+    }
+  }) {
+    success
+    message
+    paymentIntent { id, sessionId, paymentLink, amount, expiresAt }
+    beneficiaryWarning   # NEW — null on success, warning string on failure
+  }
+}
+```
+
+#### Entry Point B — Standalone Bank Details Screen (NEW)
+A dedicated screen in Contractor Settings where the contractor can save/update their bank account at any time (before or after purchasing a subscription). Use this mutation:
+
+```graphql
+mutation UpdateBankDetails($input: UpdateContractorBankDetailsInput!) {
+  updateContractorBankDetails(input: $input) {
+    success
+    message
+    beneficiaryRegistered   # Boolean — true if Cashfree registration succeeded
+    beneficiaryWarning      # String? — non-null if registration failed
+  }
+}
+```
+
+Input:
+```json
+{
+  "input": {
+    "bankAccount": {
+      "accountNumber": "123456789012",
+      "ifscCode": "SBIN0001234",
+      "accountHolderName": "John Doe",
+      "bankName": "State Bank of India"
+    }
+  }
+}
+```
+
+### Bank Account Form Fields
+
+| Field | Required | Notes |
+|-------|----------|-------|
+| `accountNumber` | ✅ Yes | Max 30 chars |
+| `ifscCode` | ✅ Yes | Pattern: `/^[A-Z]{4}0[A-Z0-9]{6}$/` |
+| `accountHolderName` | ✅ Yes | Name exactly as on bank account, max 255 chars |
+| `bankName` | ❌ Optional | e.g. "State Bank of India" |
+
+### UI Behaviour Rules
+
+| Scenario | What to show |
+|----------|-------------|
+| `beneficiaryRegistered: false` + no saved bank account | Show "Add Bank Account" form |
+| `beneficiaryRegistered: false` + bank account exists | Show pre-filled form + "Registration failed — tap retry" banner |
+| `beneficiaryRegistered: true` | Show "✓ Registered for payouts" + "Update Account" option |
+| After mutation: `beneficiaryRegistered: true` | Green success: "Bank account saved and registered for payouts." |
+| After mutation: `beneficiaryRegistered: false` + `beneficiaryWarning` non-null | Yellow banner: "[warning message]. Tap retry to try again." |
+| `beneficiaryWarning` on upgrade response | Yellow banner below success message. Does NOT block subscription flow. |
+
+### IFSC Validation (Do Client-Side Too)
+- Pattern: `/^[A-Z]{4}0[A-Z0-9]{6}$/`
+- Example valid: `SBIN0001234`, `HDFC0000001`
+- Example invalid: `sbin0001234` (lowercase), `SBI0001234` (only 3 letters), `SBIN1001234` (5th char must be 0)
+
+### Important Notes
+- `verifyBankAccount` and `adminVerifyContractorBank` mutations are **currently disabled** (Cashfree Verification Suite not enabled on the account). Do not surface bank verification UI — only save + register.
+- Beneficiary registration uses Cashfree Payouts **v2 API** internally. The `beneId` assigned is `BENE-{first-20-chars-of-contractorId-without-dashes}`. This is invisible to the app.
+- If beneficiary registration fails, the payout system will attempt to re-register during the actual payout batch processing as a safety net. Failure here is a *warning*, not a *blocker*.

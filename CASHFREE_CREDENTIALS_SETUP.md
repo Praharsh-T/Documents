@@ -171,3 +171,29 @@ If issues persist after updating credentials:
 1. Check Cashfree Dashboard for API call logs
 2. Contact Cashfree support with your App ID (don't share Secret Key)
 3. Review backend logs for detailed error messages
+
+---
+
+## Cashfree Payouts Credentials
+
+> **Note (27 March 2026):** The Verification Suite credentials (`CASHFREE_VERIFICATION_CLIENT_ID` / `CASHFREE_VERIFICATION_CLIENT_SECRET`) are the **same** as the Payout credentials for this account. No separate payout keys are required.
+
+The `.env` is configured as:
+
+```env
+# Cashfree Payouts (uses same credentials as Verification Suite)
+CASHFREE_PAYOUT_CLIENT_ID=CF10994412D6OHUIL8AQSS73BAL67G
+CASHFREE_PAYOUT_CLIENT_SECRET=cfsk_ma_test_4c1cae7d844327e9430daeecd0b21fda_24e6f673
+```
+
+The backend (`payouts.service.ts`) **automatically falls back** to `CASHFREE_VERIFICATION_CLIENT_ID/SECRET` if the payout-specific env vars are not set, so the payout system works even if only the verification credentials are present.
+
+### Payout API Endpoints
+
+| Environment | Endpoint |
+|---|---|
+| Sandbox / Test | `https://payout-gamma.cashfree.com` |
+| Production | `https://payout-api.cashfree.com` |
+
+Selection is automatic based on `NODE_ENV`: `development` → sandbox, `production` → live.
+

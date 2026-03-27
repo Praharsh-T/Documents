@@ -2,7 +2,7 @@
 
 **For:** Consumer App & Contractor App  
 **Backend:** `user-service` (NestJS GraphQL)  
-**Last Updated:** 10 March 2026  
+**Last Updated:** 27 March 2026  
 **Base GraphQL URL:** `https://connectshakti.klonec.cloud/graphql`  
 **Auth:** All requests need `Authorization: Bearer <jwt_token>` header
 
@@ -1156,6 +1156,10 @@ mutation InitiateUpgrade($input: InitiateSubscriptionUpgradeInput!) {
       orderId # System Gateway Order ID
       expiresAt
     }
+    # NEW: non-null if Cashfree beneficiary registration failed after saving bank details.
+    # Show a yellow warning banner to the contractor. Payouts will still work but may
+    # need manual re-registration. Do NOT block the subscription flow on this.
+    beneficiaryWarning
   }
 }
 ```
@@ -1272,6 +1276,79 @@ query SubHistory {
 1. **Idempotency**: `mp_payments` has a unique index on `gateway_order_id` to prevent double-charging.
 2. **Webhook Security**: All Cashfree callbacks are verified using HMAC-SHA256 signatures.
 3. **Plan History**: All purchases are logged in `contractor_subscriptions` for financial audit.
+
+---
+
+### Bank Account Management (Payouts)
+
+Contractors must register a bank account to receive payouts. This can be done **either** during subscription upgrade (via the `bankAccount` field on `initiateSubscriptionUpgrade`) **or** at any time using the dedicated mutation below.
+
+> **Why this matters:** Payouts are sent via Cashfree Payouts. The contractor must be registered as a Cashfree *beneficiary* using their bank account details before the first payout can be processed. Registration happens automatically when bank details are saved.
+
+#### Step 1 — Check current registration status
+
+Before showing the bank details form, read `beneficiaryRegistered` from the contractor's marketplace profile. This tells you whether they are already set up for payouts.
+
+```graphql
+query MyContractorProfile {
+  marketplaceContractorProfile(contractorId: "<contractorId from JWT>") {
+    bankAccountNumber       # masked — show last 4 digits only
+    bankIfscCode
+    bankAccountHolderName
+    bankName
+    bankVerified            # always false (verification disabled) — ignore this
+    beneficiaryRegistered   # KEY FLAG — true = ready for payouts
+  }
+}
+```
+
+**UI decision tree based on `beneficiaryRegistered`:**
+- `false` + no `bankAccountNumber` → Show "Add Bank Account" form (first time)
+- `false` + `bankAccountNumber` exists → Show "Registration failed — retry" banner + pre-fill form with saved details
+- `true` → Show "Registered ✓" status + "Update Account" option
+
+#### Step 2 — Save / Update Bank Account
+
+```graphql
+mutation UpdateBankDetails($input: UpdateContractorBankDetailsInput!) {
+  updateContractorBankDetails(input: $input) {
+    success
+    message
+    beneficiaryRegistered  # true = registered with Cashfree, ready for payouts
+    beneficiaryWarning     # non-null = show warning, registration failed
+  }
+}
+```
+
+**Input fields:**
+
+| Field | Required | Validation |
+|-------|----------|------------|
+| `accountNumber` | ✅ Yes | Max 30 chars |
+| `ifscCode` | ✅ Yes | Must match `/^[A-Z]{4}0[A-Z0-9]{6}$/` e.g. `SBIN0001234` |
+| `accountHolderName` | ✅ Yes | Max 255 chars — name as on bank account |
+| `bankName` | ❌ Optional | Max 255 chars |
+
+```json
+{
+  "input": {
+    "bankAccount": {
+      "accountNumber": "123456789012",
+      "ifscCode": "SBIN0001234",
+      "accountHolderName": "John Doe",
+      "bankName": "State Bank of India"
+    }
+  }
+}
+```
+
+**UI logic for the response:**
+- `beneficiaryRegistered: true` → show green "✓ Bank account registered for payouts"
+- `beneficiaryRegistered: false` + `beneficiaryWarning` non-null → show yellow warning with the message + "Retry" button (re-call same mutation)
+
+> Saving new bank details **resets** `beneficiaryRegistered` to `false` until the Cashfree call completes. If registration succeeds (or the account was already registered — 409), `beneficiaryRegistered` is set back to `true` and the DB is updated. This mutation also handles the **first-time case** — if no marketplace profile exists yet it will auto-create a FREE profile with the bank details attached.
+
+> **Note:** `bankVerified` is always `false` — Cashfree Verification Suite is not enabled. Use `beneficiaryRegistered` instead to determine payout readiness.
 
 ---
 

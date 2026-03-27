@@ -1,10 +1,95 @@
 #  Smart Meter System - Update Log
 
-**Last Updated:** 25 March 2026 (Subcontractor Refinements & Pending Webhook Automation)
+**Last Updated:** 27 March 2026 (Payout Admin Panel + Cashfree Payout Credentials + getSubcontractor Fix)
 
 ---
 
-## 📋 Latest Session Context (25 March 2026 — Subcontractor Refinements & Pending Webhook Automation)
+## 📋 Latest Session Context (27 March 2026 — Payout Admin Panel, Cashfree Payout Credentials & getSubcontractor Fix)
+
+### What Was Done This Session:
+
+#### **1. CASHFREE PAYOUT CREDENTIALS — CONFIGURED**
+
+- **Finding**: `CASHFREE_VERIFICATION_CLIENT_ID` and `CASHFREE_VERIFICATION_CLIENT_SECRET` are the same credentials used for both bank verification AND payouts.
+- **`.env` Updated**: Set `CASHFREE_PAYOUT_CLIENT_ID` and `CASHFREE_PAYOUT_CLIENT_SECRET` to the same values as the verification suite.
+- **Fallback Added**: `payouts.service.ts` → `getCashfreePayoutToken()` now falls back to `CASHFREE_VERIFICATION_CLIENT_ID/SECRET` automatically if the payout-specific vars are not set. Ensures the payout system works even on servers that haven't been updated yet.
+- **Payout API base**: sandbox → `https://payout-gamma.cashfree.com`, production → `https://payout-api.cashfree.com` (auto-selected by `NODE_ENV`).
+
+**Files Modified:**
+- `user-service/.env`
+- `user-service/src/modules/marketplace/payouts/payouts.service.ts`
+
+---
+
+#### **2. getSubcontractor QUERY — BUG FIXED**
+
+- **Bug**: `[ApolloError: Subcontractor not found or access denied]` thrown when a PREMIUM contractor called `getSubcontractor` even though the mapping existed.
+- **Root Cause**: The `parentContractorId` equality check was in the `WHERE` clause instead of the `INNER JOIN` condition on `subcontractorMappings`, causing ambiguity when combined with the `OR` id-matching clause.
+- **Additional Fix**: `subcontractorId` argument now accepts three ID forms:
+  - `contractorMarketplaceProfile.id` (the profile UUID — what `getMySubcontractors` returns)
+  - `contractors.id` (the contractor record UUID)
+  - `users.id` (the auth user UUID — covers mobile apps that may pass the logged-in user ID)
+- **Result**: Query is now robust regardless of which ID the mobile app passes.
+
+**Files Modified:**
+- `user-service/src/modules/marketplace/contractors/contractor-profile.service.ts` → `getSubcontractorProfile()`
+
+---
+
+#### **3. PAYOUT ADMIN PANEL — FRONTEND IMPLEMENTED**
+
+- **New page**: `web-frontend/src/app/(admin)/admin/marketplace/payouts/page.tsx`
+- **New GraphQL file**: `web-frontend/src/graphql/payouts.ts` (all 7 queries + 6 mutations)
+- **Nav entry added**: Payouts card added to admin marketplace dashboard (`/admin/marketplace/page.tsx`)
+
+**Features on the Payouts Admin Page:**
+
+| Feature | Description |
+|---|---|
+| Payout lifecycle banner | Shows the flow: Generate → Submit → Approve → Process → Completed |
+| Immediate Payout button | Opens preview modal (shows eligible jobs/amounts, cutoff = now − 2 hrs), then generates batch |
+| Batch list | Paginated table with status filter (All / Draft / Pending Approval / Approved / etc.) |
+| Batch detail drawer | Opens from the right: summary, action buttons, per-contractor items with expandable job ledger |
+| In-drawer actions | Submit for Approval, Approve (with notes), Process Transfers (irreversible), Cancel |
+| Job ledger drill-down | Expand any contractor item to view per-job breakdown (gross, commission, TDS, net) |
+| Audit log | Toggle audit log in the drawer to see full history of actions on the batch |
+| Weekly schedule config | Modal to set day-of-week, hour, minute, cutoff buffer, and enable/disable auto-batching |
+
+**Payout Lifecycle Flow:**
+```
+DRAFT  →  PENDING_APPROVAL  →  APPROVED  →  PROCESSING  →  COMPLETED
+  ↑              ↓                ↓              (any)       FAILED
+  └──────── CANCELLED ←──────────┘
+```
+
+**Deduction Formula (displayed per item):**
+```
+gross             = job.totalPriceSnapshot
+commission        = job.commissionAmount (snapshotted at booking)
+gstOnCommission   = commission × 18%
+contractorEarnings = gross − commission − gstOnCommission
+tds               = contractorEarnings × 1%
+net               = contractorEarnings − tds
+```
+
+**Files Created:**
+- `web-frontend/src/graphql/payouts.ts`
+- `web-frontend/src/app/(admin)/admin/marketplace/payouts/page.tsx`
+
+**Files Modified:**
+- `web-frontend/src/app/(admin)/admin/marketplace/page.tsx` (added Payouts nav card)
+
+---
+
+### ⚠️ Pending / Known Gaps After This Session:
+
+- **Payout processing** (`processPayoutBatch`) will attempt to call Cashfree Payouts API using the credentials now set. Full end-to-end testing needed on dev server.
+- **Bank account verification** on contractor profiles must be completed before `processPayoutBatch` will transfer to a contractor (items without verified bank details will be skipped).
+- **`BACKEND_URL`** must be set on the deployment server for webhook `notify_url` to be registered with Cashfree orders (payment webhook fix still depends on this).
+
+---
+
+## 📋 Previous Session Context (25 March 2026 — Subcontractor Refinements & Pending Webhook Automation)
 
 ### What Was Done This Session:
 

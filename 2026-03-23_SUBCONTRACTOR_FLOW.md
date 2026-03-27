@@ -1,5 +1,9 @@
 # Subcontractor Architecture & Flow
 
+> **Bug Fix (27 March 2026):** `getSubcontractor` query returned "not found or access denied" for valid subcontractors. Fixed in `contractor-profile.service.ts`:
+> - Moved `parentContractorId` filter into the `INNER JOIN` condition (was in `WHERE`, causing lookup failures).
+> - Now accepts `contractorMarketplaceProfile.id`, `contractors.id`, **or** `users.id` as the `subcontractorId` argument — robust for all mobile app ID formats.
+
 This document details the features, permission model, and Consumer/Contractor application flows to transition from the old Marketplace system to the new system regarding Subcontractors.
 
 ## 1. Feature Definition & Permissions

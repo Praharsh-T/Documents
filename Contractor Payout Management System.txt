@@ -1,0 +1,346 @@
+﻿Contractor Payout Management System
+Production-Grade Functional & Technical Specification
+1. Objective
+The Contractor Payout Management System manages payments to contractors for completed jobs on the platform. The system ensures:
+* Accurate contractor earnings calculation
+* Commission and tax deductions
+* Secure payout processing through bank/payment gateway
+* Financial ledger tracking
+* Automated and manual payout generation
+* Reconciliation and auditability
+The system must guarantee:
+1. No job is paid more than once
+2. All eligible jobs are included in payouts
+3. All financial transactions are auditable
+2. System Actors
+Actor
+	Responsibility
+	Admin
+	Configure payouts and approve payments
+	Finance Admin
+	Execute payouts and manage wallet
+	System Scheduler
+	Trigger automatic payouts
+	Payment Gateway
+	Execute bank transfers
+	Contractor
+	Receives payouts
+	3. High-Level Payout Workflow
+Earnings Generation
+Job Completed
+↓
+Customer Payment Received
+↓
+Contractor Earnings Credited
+↓
+Contractor Payable Ledger Updated
+
+
+Payout Processing
+Generate Payout Batch
+↓
+Lock Eligible Jobs
+↓
+Admin Review
+↓
+Wallet Funding
+↓
+Approve Payout
+↓
+Process Payment via Gateway
+↓
+Update Ledger
+↓
+Reconciliation
+
+
+4. Job Eligibility Rules
+A job qualifies for payout if:
+1. Job Status = Completed
+2. Customer payment status = Received
+3. Job payout status = Unpaid
+4. Job completion date ≤ Configured cutoff date
+5. Job not included in any payout batch
+Jobs are locked once included in a payout batch to prevent modification.
+5. Earnings & Deduction Calculation
+Job Level Earnings
+Job Amount = Customer Payment
+Commission = Job Amount × Commission Rate
+TDS = Contractor Earnings × TDS Rate
+GST on Commission = Commission × GST Rate
+
+
+Net Contractor Earnings
+Net Earnings = Job Amount − Commission − GST on Commission − TDS
+Example:
+Item
+	Amount
+	Job Value
+	₹10,000
+	Commission
+	₹1,000
+	GST on Commission
+	₹180
+	TDS (1%)
+	₹90
+	Net Payable
+	₹8,730
+	6. Financial Ledger Model
+The system uses double-entry accounting for financial integrity.
+Ledger Accounts
+Account
+	Type
+	Platform Wallet
+	Asset
+	Contractor Payable
+	Liability
+	Commission Revenue
+	Revenue
+	TDS Payable
+	Liability
+	Gateway Settlement
+	Asset
+	Example Ledger Entries
+Job completion:
+Debit: Customer Receivable
+Credit: Contractor Payable
+
+
+Commission deduction:
+Debit: Contractor Payable
+Credit: Commission Revenue
+
+
+Payout processing:
+Debit: Contractor Payable
+Credit: Platform Wallet
+
+
+7. Payout Schedule Configuration
+Admin can configure automatic payout schedules.
+Field
+	Description
+	Schedule Type
+	Weekly / Biweekly / Monthly
+	Execution Day
+	Day of week or month
+	Execution Time
+	Time of payout generation
+	Timezone
+	System timezone
+	Example:
+Schedule
+	Execution
+	Weekly
+	Friday 18:00
+	Biweekly
+	Alternate Monday
+	Monthly
+	1st of month
+	8. Payout Batch Generation
+A payout batch groups eligible contractor payments.
+Batch Creation Steps
+1. Identify eligible jobs
+2. Lock jobs
+3. Calculate contractor payouts
+4. Generate payout report
+5. Notify admin
+Job Locking
+jobs.payout_batch_id = batch_id
+jobs.payout_status = LOCKED
+
+
+9. Payout Report Structure
+Contractor Summary
+Field
+	Contractor ID
+	Contractor Name
+	Bank Details
+	Total Jobs
+	Total Job Value
+	Total Commission
+	TDS Deducted
+	Net Payable
+	Last Payout Date
+	Pending Balance
+	Job Details
+Field
+	Job ID
+	Completion Date
+	Service Type
+	Job Amount
+	Commission
+	TDS
+	Net Amount
+	10. Payout Approval Options
+Admin can approve payouts in several ways.
+Full Payout
+All contractors receive full payable amount.
+Partial Payout
+Admin specifies payout percentage.
+Example:
+Net Payable = ₹10,000
+Payout Percentage = 60%
+Payout Amount = ₹6,000
+Remaining Balance = ₹4,000
+
+
+Contractor Selection
+Admin can select specific contractors for payout.
+Cutoff Date
+Only jobs completed before the specified date are included.
+11. Wallet Management
+The platform wallet funds contractor payouts.
+Wallet Features
+Feature
+	Description
+	Load Funds
+	Admin adds funds
+	View Balance
+	Current wallet balance
+	Transaction Logs
+	Ledger history
+	Validation
+Before payout:
+If wallet balance < payout amount
+Block payout execution
+
+
+12. Beneficiary Verification
+Contractor bank accounts must be verified before payouts.
+Verification methods:
+* Penny drop verification
+* Bank account validation API
+Required fields:
+Field
+	Bank Account Number
+	IFSC
+	Beneficiary Name
+	UPI ID (optional)
+	Verification Status
+	13. Payment Processing
+Payments are executed through bank APIs or payout gateways.
+Supported rails:
+Method
+	Use
+	IMPS
+	Instant payout
+	NEFT
+	Scheduled payout
+	UPI
+	Small payouts
+	Common integrations:
+* Cashfree Payouts – for now
+* Bank direct API – for future based on need
+14. Idempotent Payment Requests
+Each payout must have a unique reference ID.
+Example:
+PAYOUT-20260311-BATCH001
+
+
+This prevents duplicate transfers if APIs retry.
+15. Payment Status Lifecycle
+Status
+	Description
+	Pending
+	Batch generated
+	Approved
+	Admin approved
+	Processing
+	Payment initiated
+	Success
+	Payment completed
+	Failed
+	Payment unsuccessful
+	16. Failure Handling
+If payout fails:
+1. Mark payout status as Failed
+2. Record gateway error
+3. Reverse ledger entry
+4. Notify admin
+Retry is allowed if the failure reason permits.
+Additional fields:
+Field
+	Retry Count
+	Failure Reason
+	Gateway Response
+	17. Reconciliation
+Daily reconciliation ensures payout accuracy.
+Reconcile:
+System Payout Records
+vs
+Gateway Payout Report
+vs
+Bank Settlement
+
+
+Tables required:
+* gateway_payout_reports
+* reconciliation_logs
+18. Manual Adjustments
+Finance team can perform adjustments.
+Examples:
+* Dispute deduction
+* Bonus payments
+* Penalty deductions
+* Refund adjustments
+Adjustment table fields:
+Field
+	Contractor ID
+	Adjustment Type
+	Amount
+	Reason
+	19. Maker-Checker Approval
+Large payouts require dual approval.
+Workflow:
+Finance Executive → Creates payout
+Finance Manager → Approves payout
+
+
+Threshold example:
+Payout > ₹5,00,000 requires second approval
+
+
+20. Audit Trail
+All payout actions must be logged.
+Events logged:
+* Payout batch creation
+* Job locking
+* Admin approval
+* Payment request
+* Payment response
+* Payout cancellation
+Logs must be immutable.
+21. Scheduler Design
+Background worker executes payout generation.
+Scheduler responsibilities:
+1. Check payout schedule
+2. Generate payout batch
+3. Send admin notification
+22. Scalability Considerations
+For large platforms:
+Metric
+	Expected Scale
+	Contractors
+	10,000+
+	Jobs per month
+	100,000+
+	Batch generation should use:
+* background workers
+* queue processing
+* chunked job evaluation
+23. Security Controls
+Security features required:
+* Role-based admin access
+* API authentication
+* Immutable financial logs
+* Idempotent payment APIs
+* Encrypted bank details
+Final Notes
+This specification now supports:
+* Financial auditability
+* Tax compliance
+* Payment gateway integration
+* High-scale marketplace operations
+* Secure payout processing
+*******************
